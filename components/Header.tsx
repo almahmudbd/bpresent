@@ -10,16 +10,13 @@ export function Header() {
                         <BarChart3 className="w-6 h-6 text-white" />
                     </div>
                     <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
-                        Present
+                        bPresent
                     </span>
                 </Link>
 
                 <nav className="hidden md:flex items-center gap-8">
                     <Link href="/features" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
                         Features
-                    </Link>
-                    <Link href="/pricing" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
-                        Pricing
                     </Link>
                     <Link href="/about" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
                         About

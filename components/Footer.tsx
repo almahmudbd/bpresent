@@ -1,4 +1,4 @@
-import { BarChart3, Github, Twitter, Linkedin } from "lucide-react";
+import { BarChart3, Github, Facebook, Blogger } from "lucide-react";
 import Link from "next/link";
 
 export function Footer() {
@@ -19,41 +19,23 @@ export function Footer() {
                     </div>
 
                     <div>
-                        <h3 className="font-semibold text-gray-900 mb-4">Product</h3>
-                        <ul className="space-y-2">
-                            <li><Link href="#" className="text-sm text-gray-500 hover:text-indigo-600">Features</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-500 hover:text-indigo-600">Templates</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-500 hover:text-indigo-600">Pricing</Link></li>
-                        </ul>
-                    </div>
-
-                    <div>
-                        <h3 className="font-semibold text-gray-900 mb-4">Company</h3>
-                        <ul className="space-y-2">
-                            <li><Link href="#" className="text-sm text-gray-500 hover:text-indigo-600">About</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-500 hover:text-indigo-600">Blog</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-500 hover:text-indigo-600">Careers</Link></li>
-                        </ul>
-                    </div>
-
-                    <div>
                         <h3 className="font-semibold text-gray-900 mb-4">Connect</h3>
                         <div className="flex gap-4">
-                            <a href="#" className="text-gray-400 hover:text-indigo-600 transition-colors">
+                            <a href="https://github.com/almahmudbd/present" className="text-gray-400 hover:text-indigo-600 transition-colors">
                                 <Github className="w-5 h-5" />
                             </a>
-                            <a href="#" className="text-gray-400 hover:text-indigo-600 transition-colors">
-                                <Twitter className="w-5 h-5" />
+                            <a href="https://www.facebook.com/almahmud1234" className="text-gray-400 hover:text-indigo-600 transition-colors">
+                                <Facebook className="w-5 h-5" />
                             </a>
-                            <a href="#" className="text-gray-400 hover:text-indigo-600 transition-colors">
-                                <Linkedin className="w-5 h-5" />
+                            <a href="https://thealmahmud.blogspot.com/" className="text-gray-400 hover:text-indigo-600 transition-colors">
+                                <Blogger className="w-5 h-5" />
                             </a>
                         </div>
                     </div>
                 </div>
                 <div className="mt-12 pt-8 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
                     <p className="text-sm text-gray-500">
-                        © {new Date().getFullYear()} Present. All rights reserved.
+                        © {new Date().getFullYear()} bPresent. All rights reserved.
                     </p>
                     <div className="flex gap-6">
                         <Link href="#" className="text-sm text-gray-500 hover:text-gray-900">Privacy Policy</Link>
