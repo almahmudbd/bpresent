@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import {
-    createPoll,
+createPoll,
     getPoll,
     updateActiveSlide,
+    deletePoll,
 } from "@/lib/services/poll.service";
 import { getVotedSlideIds } from "@/lib/services/voting.service";
 import { cookies } from "next/headers";
