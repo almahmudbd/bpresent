@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, ArrowRight } from "lucide-react";
+import { Plus, Trash2, ArrowRight, Save } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
 interface SlideState {
     id: string;
@@ -17,6 +18,35 @@ export default function PresenterDashboard() {
         { id: crypto.randomUUID(), question: "", type: "quiz", options: ["", ""] },
     ]);
     const [loading, setLoading] = useState(false);
+    const [user, setUser] = useState<unknown>(null);
+    const [savedPresentationId, setSavedPresentationId] = useState<string | null>(null);
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [saveTitle, setSaveTitle] = useState("");
+
+    useEffect(() => {
+        // Check authentication
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setUser(session?.user ?? null);
+        });
+
+        // Load presentation from sessionStorage if exists
+        const loadData = sessionStorage.getItem("loadPresentation");
+        if (loadData) {
+            try {
+                const presentation = JSON.parse(loadData);
+                setSavedPresentationId(presentation.id);
+                setSaveTitle(presentation.title);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                setSlides(presentation.slides.map((s: any) => ({
+                    ...s,
+                    id: crypto.randomUUID(),
+                })));
+                sessionStorage.removeItem("loadPresentation");
+            } catch (error) {
+                console.error("Error loading presentation:", error);
+            }
+        }
+    }, []);
 
     const updateSlide = <K extends keyof SlideState>(
         index: number,
@@ -61,6 +91,62 @@ export default function PresenterDashboard() {
         }
     };
 
+    const handleSavePresentation = async () => {
+        if (!user) {
+            alert("Please sign in to save presentations");
+            return;
+        }
+
+        if (!saveTitle.trim()) {
+            alert("Please enter a title for your presentation");
+            return;
+        }
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const presentationData = {
+                title: saveTitle,
+                slides: slides.map((s) => ({
+                    type: s.type,
+                    question: s.question,
+                    options: s.type === "quiz" ? s.options : undefined,
+                })),
+            };
+
+            if (savedPresentationId) {
+                // Update existing
+                await fetch(`/api/presentations/${savedPresentationId}`, {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${session.access_token}`,
+                    },
+                    body: JSON.stringify(presentationData),
+                });
+            } else {
+                // Create new
+                const response = await fetch("/api/presentations", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${session.access_token}`,
+                    },
+                    body: JSON.stringify(presentationData),
+                });
+                const data = await response.json();
+                setSavedPresentationId(data.presentation?.id);
+            }
+
+            setShowSaveModal(false);
+            alert("Presentation saved successfully!");
+        } catch (error) {
+            console.error("Error saving presentation:", error);
+            alert("Failed to save presentation");
+        }
+    };
+
     const createPoll = async () => {
         if (slides.some((s) => !s.question.trim())) return;
         if (slides.some((s) => s.type === "quiz" && s.options.some((o) => !o.trim()))) return;
@@ -97,7 +183,18 @@ export default function PresenterDashboard() {
     return (
         <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 flex items-center justify-center">
             <div className="w-full max-w-2xl bg-white p-8 rounded-2xl shadow-xl border border-gray-100 max-h-[90vh] overflow-y-auto">
-                <h1 className="text-3xl font-bold text-gray-900 mb-8">Create Your Poll</h1>
+                <div className="flex items-center justify-between mb-8">
+                    <h1 className="text-3xl font-bold text-gray-900">Create Your Poll</h1>
+                    {user && (
+                        <button
+                            onClick={() => setShowSaveModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                        >
+                            <Save className="w-4 h-4" />
+                            Save
+                        </button>
+                    )}
+                </div>
 
                 <div className="space-y-8">
                     {slides.map((slide, sIndex) => (
@@ -132,8 +229,8 @@ export default function PresenterDashboard() {
                                         <button
                                             onClick={() => updateSlide(sIndex, "type", "quiz")}
                                             className={`flex-1 py-3 px-4 rounded-lg border transition-all ${slide.type === "quiz"
-                                                    ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-medium"
-                                                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                                ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-medium"
+                                                : "border-gray-200 text-gray-600 hover:bg-gray-50"
                                                 }`}
                                         >
                                             Multiple Choice
@@ -141,8 +238,8 @@ export default function PresenterDashboard() {
                                         <button
                                             onClick={() => updateSlide(sIndex, "type", "word-cloud")}
                                             className={`flex-1 py-3 px-4 rounded-lg border transition-all ${slide.type === "word-cloud"
-                                                    ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-medium"
-                                                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                                ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-medium"
+                                                : "border-gray-200 text-gray-600 hover:bg-gray-50"
                                                 }`}
                                         >
                                             Word Cloud
@@ -206,6 +303,39 @@ export default function PresenterDashboard() {
                     </button>
                 </div>
             </div>
+
+            {/* Save Modal */}
+            {showSaveModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSaveModal(false)}>
+                    <div
+                        className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 className="text-xl font-bold text-gray-900 mb-4">Save Presentation</h3>
+                        <input
+                            type="text"
+                            value={saveTitle}
+                            onChange={(e) => setSaveTitle(e.target.value)}
+                            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 outline-none mb-4"
+                            placeholder="Enter presentation title..."
+                        />
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowSaveModal(false)}
+                                className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSavePresentation}
+                                className="flex-1 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-lg font-medium transition-all"
+                            >
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
