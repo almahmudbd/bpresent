@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { User } from "@supabase/supabase-js";
 import { Plus, Edit, Trash2, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 
@@ -19,7 +20,7 @@ export default function MyPresentationsPage() {
     const router = useRouter();
     const [presentations, setPresentations] = useState<SavedPresentation[]>([]);
     const [loading, setLoading] = useState(true);
-    const [user, setUser] = useState<unknown>(null);
+    const [user, setUser] = useState<User | null>(null);
 
     useEffect(() => {
         checkAuth();

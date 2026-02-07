@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, ArrowRight, Save } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { User } from "@supabase/supabase-js";
 
 interface SlideState {
     id: string;
@@ -18,7 +19,7 @@ export default function PresenterDashboard() {
         { id: crypto.randomUUID(), question: "", type: "quiz", options: ["", ""] },
     ]);
     const [loading, setLoading] = useState(false);
-    const [user, setUser] = useState<unknown>(null);
+    const [user, setUser] = useState<User | null>(null);
     const [savedPresentationId, setSavedPresentationId] = useState<string | null>(null);
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [saveTitle, setSaveTitle] = useState("");
