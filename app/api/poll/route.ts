@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-createPoll,
+import {
+    createPoll,
     getPoll,
     updateActiveSlide,
     deletePoll,
