@@ -2,7 +2,7 @@
 
 ## Prerequisites Checklist
 - [x] Node.js installed
-- [ ] Supabase account created
+- [x] Supabase account created
 - [ ] Supabase migration run
 - [ ] Redis Cloud credentials configured in `.env`
 
