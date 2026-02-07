@@ -72,7 +72,13 @@ export const redis = {
     },
 
     async sadd(key: string, ...members: string[]): Promise<number> {
-        return await redisClient.sadd(key, ...members);
+        if (isUpstash) {
+            // Upstash accepts variable arguments
+            return await (redisClient as UpstashRedis).sadd(key, members[0], ...members.slice(1));
+        } else {
+            // IORedis accepts variable arguments
+            return await (redisClient as IORedis).sadd(key, ...members);
+        }
     },
 
     async scard(key: string): Promise<number> {
