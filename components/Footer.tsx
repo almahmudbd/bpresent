@@ -16,6 +16,9 @@ export function Footer() {
                         <p className="text-sm text-gray-500 max-w-xs">
                             Real-time interactive presentations for modern classrooms and meetings.
                         </p>
+                        <p className="text-sm text-gray-500">
+                            © {new Date().getFullYear()} bPresent. All rights reserved.
+                        </p>
                     </div>
 
                     <div>
@@ -31,15 +34,6 @@ export function Footer() {
                                 <Blogger className="w-5 h-5" />
                             </a>
                         </div>
-                    </div>
-                </div>
-                <div className="mt-12 pt-8 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
-                    <p className="text-sm text-gray-500">
-                        © {new Date().getFullYear()} bPresent. All rights reserved.
-                    </p>
-                    <div className="flex gap-6">
-                        <Link href="#" className="text-sm text-gray-500 hover:text-gray-900">Privacy Policy</Link>
-                        <Link href="#" className="text-sm text-gray-500 hover:text-gray-900">Terms of Service</Link>
                     </div>
                 </div>
             </div>
