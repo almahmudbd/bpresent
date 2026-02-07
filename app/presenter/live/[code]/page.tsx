@@ -1,138 +1,97 @@
 "use client";
 
-import { useEffect, useState, use, useCallback } from "react";
+import { useEffect, useState, use } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Copy, Check, ChevronRight, ChevronLeft, Users } from "lucide-react";
-import PollResults from "@/components/PollResults";
-import { type Poll, type Slide, type Option } from "@/app/types";
-
-// Combine Slide and Options for UI usage
-interface SlideWithOptions extends Omit<Slide, "options"> {
-    options: Option[];
-}
+import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X } from "lucide-react";
+import { type PollWithSlides, type SlideWithOptions } from "@/lib/types";
+import { QRCodeSVG } from "qrcode.react";
 
 export default function PresenterLivePage({ params }: { params: Promise<{ code: string }> }) {
     const { code } = use(params);
-    const [poll, setPoll] = useState<Poll | null>(null);
-    const [slides, setSlides] = useState<SlideWithOptions[]>([]);
-    const [activeOriginalSlide, setActiveOriginalSlide] = useState<SlideWithOptions | null>(null);
+    const [poll, setPoll] = useState<PollWithSlides | null>(null);
+    const [activeSlide, setActiveSlide] = useState<SlideWithOptions | null>(null);
+    const [participantCount, setParticipantCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [copied, setCopied] = useState(false);
+    const [showQr, setShowQr] = useState(false);
+    const [origin, setOrigin] = useState("");
 
-    const fetchPollData = useCallback(async () => {
-        const { data: pollData, error: pollError } = await supabase
-            .from("polls")
-            .select("*")
-            .eq("code", code)
-            .single();
+    useEffect(() => {
+        setOrigin(window.location.origin);
+        fetchPollData();
+    }, [code]);
 
-        if (pollError || !pollData) {
-            console.error("Error fetching poll:", pollError);
+    const fetchPollData = async () => {
+        const response = await fetch(`/api/poll?code=${code}`);
+        const data = await response.json();
+
+        if (data.error) {
             setLoading(false);
             return;
         }
 
-        const { data: slidesData, error: slidesError } = await supabase
-            .from("slides")
-            .select("*")
-            .eq("poll_id", pollData.id)
-            .order("order_index", { ascending: true });
-
-        if (slidesError) {
-            console.error("Error fetching slides:", slidesError);
-        }
-
-        if (slidesData) {
-            const slideIds = slidesData.map(s => s.id);
-            const { data: allOptions } = await supabase
-                .from("options")
-                .select("*")
-                .in("slide_id", slideIds);
-
-            const slidesWithOptions = slidesData.map(slide => ({
-                ...slide,
-                options: allOptions ? allOptions.filter(o => o.slide_id === slide.id) : []
-            }));
-
-            setSlides(slidesWithOptions);
-            setPoll(pollData);
-
-            const active = slidesWithOptions.find(s => s.id === pollData.active_slide_id) || slidesWithOptions[0];
-            setActiveOriginalSlide(active);
-        }
+        setPoll(data);
+        const active = data.slides.find((s: SlideWithOptions) => s.id === data.active_slide_id) || data.slides[0];
+        setActiveSlide(active);
         setLoading(false);
-    }, [code]);
+    };
 
+    // Real-time subscriptions
     useEffect(() => {
-        fetchPollData();
-    }, [fetchPollData]);
-
-    useEffect(() => {
-        if (!poll) return;
-
         const channel = supabase
             .channel(`poll-${code}`)
             .on("postgres_changes", { event: "UPDATE", schema: "public", table: "polls", filter: `code=eq.${code}` },
                 (payload) => {
-                    console.log("PRESENTER: Realtime Poll Update:", payload);
-                    const newPoll = payload.new as Poll;
-                    if (newPoll.active_slide_id) {
-                        setPoll((prev) => prev ? ({ ...prev, active_slide_id: newPoll.active_slide_id }) : null);
-                    }
+                    const newPoll = payload.new as any;
+                    setPoll((currentPoll) => {
+                        if (currentPoll && newPoll.active_slide_id && newPoll.active_slide_id !== currentPoll.active_slide_id) {
+                            const newActive = currentPoll.slides.find(s => s.id === newPoll.active_slide_id);
+                            if (newActive) setActiveSlide(newActive);
+                        }
+                        return currentPoll ? { ...currentPoll, ...newPoll } : null;
+                    });
                 }
             )
             .on("postgres_changes", { event: "UPDATE", schema: "public", table: "options" },
                 (payload) => {
-                    console.log("PRESENTER: Realtime Option Update:", payload);
-                    const updatedOption = payload.new as Option;
-                    setSlides((prevSlides) =>
-                        prevSlides.map(slide => {
-                            if (slide.id === updatedOption.slide_id) {
-                                return {
-                                    ...slide,
-                                    options: slide.options.map((opt) =>
-                                        opt.id === updatedOption.id ? updatedOption : opt
-                                    )
-                                };
-                            }
-                            return slide;
-                        })
-                    );
+                    const updatedOption = payload.new as any;
+                    setActiveSlide((currentSlide) => {
+                        if (currentSlide && currentSlide.options.some(opt => opt.id === updatedOption.id)) {
+                            return {
+                                ...currentSlide,
+                                options: currentSlide.options.map(opt =>
+                                    opt.id === updatedOption.id ? { ...opt, ...updatedOption } : opt
+                                )
+                            };
+                        }
+                        return currentSlide;
+                    });
                 }
             )
             .on("postgres_changes", { event: "INSERT", schema: "public", table: "options" },
                 (payload) => {
-                    console.log("PRESENTER: Realtime New Option:", payload);
-                    const newOption = payload.new as Option;
-                    setSlides((prevSlides) =>
-                        prevSlides.map(slide => {
-                            if (slide.id === newOption.slide_id) {
-                                if (slide.options.find((o) => o.id === newOption.id)) return slide;
-                                return {
-                                    ...slide,
-                                    options: [...slide.options, newOption]
-                                };
-                            }
-                            return slide;
-                        })
-                    );
+                    const newOption = payload.new as any;
+                    setActiveSlide((currentSlide) => {
+                        if (currentSlide && newOption.slide_id === currentSlide.id) {
+                            // Check if already exists to avoid duplicates
+                            if (currentSlide.options.some(opt => opt.id === newOption.id)) return currentSlide;
+                            return {
+                                ...currentSlide,
+                                options: [...currentSlide.options, newOption]
+                            };
+                        }
+                        return currentSlide;
+                    });
                 }
             )
             .subscribe((status) => {
-                console.log("PRESENTER: Subscription Status:", status);
+                console.log("Supabase Realtime status:", status);
             });
 
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [code, poll?.id]);
-
-    useEffect(() => {
-        if (poll && slides.length > 0) {
-            const active = slides.find(s => s.id === poll.active_slide_id) || slides[0];
-            setActiveOriginalSlide(active);
-        }
-    }, [poll?.active_slide_id, slides, poll]);
+    }, [code]);
 
     const copyCode = () => {
         navigator.clipboard.writeText(code);
@@ -141,68 +100,183 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     };
 
     const navigateSlide = async (newIndex: number) => {
-        if (!slides[newIndex] || !poll) return;
+        if (!poll || !poll.slides[newIndex]) return;
 
-        const { error } = await supabase
-            .from("polls")
-            .update({ active_slide_id: slides[newIndex].id })
-            .eq("id", poll.id);
-
-        if (error) console.error("PRESENTER: Navigation Error:", error);
+        await fetch("/api/poll", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code, slideId: poll.slides[newIndex].id }),
+        });
     };
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500">Loading data...</div>;
-    if (!poll || !activeOriginalSlide) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500">Poll not found.</div>;
+    if (loading) return (
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+            <div className="text-gray-500">Loading...</div>
+        </div>
+    );
 
-    const pollForResult = {
-        type: activeOriginalSlide.type,
-        options: activeOriginalSlide.options.map((o) => ({
-            text: o.text,
-            votes: o.vote_count,
-            color: o.color
-        }))
-    };
+    if (!poll || !activeSlide) return (
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+            <div className="text-gray-500">Poll not found</div>
+        </div>
+    );
 
-    const totalVotes = pollForResult.options.reduce((acc, curr) => acc + curr.votes, 0);
-    const activeIndex = slides.findIndex(s => s.id === activeOriginalSlide.id);
+    const totalVotes = activeSlide.options.reduce((sum, opt) => sum + opt.vote_count, 0);
+    const activeIndex = poll.slides.findIndex(s => s.id === activeSlide.id);
 
     return (
-        <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center">
-            <div className="w-full max-w-4xl flex justify-between items-center mb-12">
-                <h2 className="text-xl font-medium text-gray-500">Mentimeter-like Poll</h2>
-                <div className="flex items-center gap-4 bg-white px-6 py-3 rounded-full shadow-sm border border-gray-200">
-                    <span className="text-gray-500 text-sm">Join with code:</span>
-                    <span className="text-2xl font-bold tracking-widest text-indigo-600">{code}</span>
-                    <button onClick={copyCode} className="ml-2 text-gray-400 hover:text-indigo-600">
+        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 flex flex-col">
+            {/* Header */}
+            <div className="w-full max-w-6xl mx-auto flex justify-between items-center mb-8">
+                <h2 className="text-xl font-medium text-gray-500">Live Poll</h2>
+                <div className="flex items-center gap-4 bg-white px-6 py-3 rounded-full shadow-lg border border-gray-200 relative">
+                    <span className="text-gray-500 text-sm">Join Code:</span>
+                    <span className="text-3xl font-bold tracking-widest text-indigo-600">{code}</span>
+
+                    <div className="h-8 w-px bg-gray-200 mx-2"></div>
+
+                    <button
+                        onClick={copyCode}
+                        className="text-gray-400 hover:text-indigo-600 transition-colors"
+                        title="Copy Code"
+                    >
                         {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
                     </button>
+
+                    <button
+                        onClick={() => setShowQr(!showQr)}
+                        className={`text-gray-400 hover:text-indigo-600 transition-colors ${showQr ? 'text-indigo-600' : ''}`}
+                        title="Show QR Code"
+                    >
+                        <QrCode className="w-5 h-5" />
+                    </button>
+
+                    {/* QR Code Popup */}
+                    {showQr && origin && (
+                        <div className="absolute top-full right-0 mt-4 p-6 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 flex flex-col items-center animate-in fade-in zoom-in duration-200 origin-top-right w-[280px]">
+                            <div className="mb-4 text-center">
+                                <p className="text-lg font-bold text-gray-900">Scan to Join</p>
+                                <p className="text-sm text-indigo-500 font-medium break-all mt-1">{origin}/vote/{code}</p>
+                            </div>
+                            <div className="p-3 bg-white rounded-xl border-2 border-indigo-50 shadow-inner">
+                                <QRCodeSVG
+                                    value={`${origin}/vote/${code}`}
+                                    size={200}
+                                    level="H"
+                                    includeMargin={false}
+                                    className="rounded-lg"
+                                />
+                            </div>
+                            <button
+                                onClick={() => setShowQr(false)}
+                                className="absolute -top-3 -right-3 bg-white text-gray-400 hover:text-red-500 p-2 rounded-full shadow-lg border border-gray-100 transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            <div className="w-full max-w-5xl flex-1 flex flex-col">
-                <h1 className="text-4xl md:text-5xl font-bold text-center text-gray-900 mb-16 px-4 leading-tight">
-                    {activeOriginalSlide.question}
+            {/* Main Content */}
+            <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col">
+                <h1 className="text-5xl font-bold text-center text-gray-900 mb-12 leading-tight">
+                    {activeSlide.question}
                 </h1>
 
-                <div className="w-full">
-                    <PollResults poll={pollForResult as any} height={600} />
+                {/* Results */}
+                <div className="flex-1 bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+                    {activeSlide.type === "quiz" ? (
+                        <div className="space-y-4">
+                            {activeSlide.options.map((option) => {
+                                const percentage = totalVotes > 0 ? (option.vote_count / totalVotes) * 100 : 0;
+                                return (
+                                    <div key={option.id} className="relative">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="font-medium text-gray-900">{option.text}</span>
+                                            <span className="text-sm text-gray-500">{option.vote_count} votes ({percentage.toFixed(1)}%)</span>
+                                        </div>
+                                        <div className="h-12 bg-gray-100 rounded-lg overflow-hidden">
+                                            <div
+                                                className="h-full transition-all duration-500 flex items-center justify-end pr-4"
+                                                style={{
+                                                    width: `${percentage}%`,
+                                                    backgroundColor: option.color || "#6366f1"
+                                                }}
+                                            >
+                                                {percentage > 10 && (
+                                                    <span className="text-white font-bold">{percentage.toFixed(0)}%</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="flex flex-wrap gap-4 justify-center items-center min-h-[400px] content-center p-8">
+                            {activeSlide.options.map((option) => (
+                                <div
+                                    key={option.id}
+                                    className="relative px-6 py-3 rounded-full font-bold text-white shadow-lg transition-all duration-500 hover:scale-110 cursor-default"
+                                    style={{
+                                        backgroundColor: option.color || "#6366f1",
+                                        fontSize: `${Math.max(16, Math.min(80, 16 + (option.vote_count - 1) * 8))}px`,
+                                        zIndex: option.vote_count
+                                    }}
+                                >
+                                    {option.text}
+                                    {option.vote_count > 1 && (
+                                        <span
+                                            className="absolute -top-2 -right-2 bg-red-500 text-white flex items-center justify-center rounded-full shadow-sm border-2 border-white"
+                                            style={{
+                                                width: '24px',
+                                                height: '24px',
+                                                fontSize: '12px',
+                                                minWidth: '24px'
+                                            }}
+                                        >
+                                            {option.vote_count}
+                                        </span>
+                                    )}
+                                </div>
+                            ))}
+                            {activeSlide.options.length === 0 && (
+                                <div className="text-center text-gray-400">
+                                    <p className="text-xl mb-2">Waiting for responses...</p>
+                                    <p className="text-sm">Join and type a word to see it appear here!</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
-                <div className="mt-8 flex justify-between items-center w-full">
-                    <div className="flex justify-center items-center text-gray-500 gap-2">
-                        <Users className="w-5 h-5" />
-                        <span className="text-lg font-medium">{totalVotes}</span>
+                {/* Footer Controls */}
+                <div className="mt-8 flex justify-between items-center">
+                    <div className="flex items-center gap-3 text-gray-600">
+                        <Users className="w-6 h-6" />
+                        <span className="text-xl font-semibold">{totalVotes}</span>
                         <span>votes</span>
                     </div>
 
-                    {slides.length > 1 && (
+                    {poll.slides.length > 1 && (
                         <div className="flex items-center gap-4">
-                            <button onClick={() => navigateSlide(activeIndex - 1)} disabled={activeIndex === 0} className="p-3 rounded-full hover:bg-gray-100 disabled:opacity-30">
-                                <ChevronLeft className="w-6 h-6 text-gray-700" />
+                            <button
+                                onClick={() => navigateSlide(activeIndex - 1)}
+                                disabled={activeIndex === 0}
+                                className="p-3 rounded-full hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+                            >
+                                <ChevronLeft className="w-7 h-7 text-gray-700" />
                             </button>
-                            <span className="text-gray-500 font-medium">Slide {activeIndex + 1} / {slides.length}</span>
-                            <button onClick={() => navigateSlide(activeIndex + 1)} disabled={activeIndex === slides.length - 1} className="p-3 rounded-full hover:bg-gray-100 disabled:opacity-30">
-                                <ChevronRight className="w-6 h-6 text-gray-700" />
+                            <span className="text-gray-600 font-medium">
+                                Slide {activeIndex + 1} / {poll.slides.length}
+                            </span>
+                            <button
+                                onClick={() => navigateSlide(activeIndex + 1)}
+                                disabled={activeIndex === poll.slides.length - 1}
+                                className="p-3 rounded-full hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+                            >
+                                <ChevronRight className="w-7 h-7 text-gray-700" />
                             </button>
                         </div>
                     )}

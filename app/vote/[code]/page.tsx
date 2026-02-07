@@ -1,147 +1,102 @@
 "use client";
 
-import { useEffect, useState, use, useCallback } from "react";
+import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { CheckCircle2 } from "lucide-react";
-import PollResults from "@/components/PollResults";
-import { type Poll, type Slide, type Option } from "@/app/types";
-
-// Combine Slide and Options for UI usage
-interface SlideWithOptions extends Slide {
-    options: Option[];
-}
+import { type PollWithSlides, type SlideWithOptions } from "@/lib/types";
 
 export default function VotePage({ params }: { params: Promise<{ code: string }> }) {
     const { code } = use(params);
     const router = useRouter();
-    const [poll, setPoll] = useState<Poll | null>(null);
-    const [slides, setSlides] = useState<SlideWithOptions[]>([]); // All slides
-    const [activeOriginalSlide, setActiveOriginalSlide] = useState<SlideWithOptions | null>(null); // Computed active slide
+    const [poll, setPoll] = useState<PollWithSlides | null>(null);
+    const [activeSlide, setActiveSlide] = useState<SlideWithOptions | null>(null); // This is the user's CURRENTLY VIEWED slide
+    const [liveSlideId, setLiveSlideId] = useState<string | null>(null); // This is the PRESENTER'S active slide
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
-    const [voted, setVoted] = useState(false);
+    const [votedSlides, setVotedSlides] = useState<Set<string>>(new Set());
     const [text, setText] = useState("");
+    const [viewingLive, setViewingLive] = useState(true);
 
-    const fetchPollData = useCallback(async () => {
-        try {
-            const { data: pollData, error } = await supabase
-                .from("polls")
-                .select("*")
-                .eq("code", code)
-                .single();
-
-            if (error || !pollData) {
-                console.error("Poll not found or error:", error);
-                setLoading(false);
-                return;
-            }
-
-            const { data: slidesData, error: slidesError } = await supabase
-                .from("slides")
-                .select("*")
-                .eq("poll_id", pollData.id)
-                .order("order_index", { ascending: true });
-
-            if (slidesError) {
-                console.error("Error fetching slides:", slidesError);
-            }
-
-            if (slidesData) {
-                const slideIds = slidesData.map(s => s.id);
-                const { data: allOptions } = await supabase
-                    .from("options")
-                    .select("*")
-                    .in("slide_id", slideIds);
-
-                const slidesWithOptions = slidesData.map(slide => ({
-                    ...slide,
-                    options: allOptions ? allOptions.filter(o => o.slide_id === slide.id) : []
-                }));
-
-                setSlides(slidesWithOptions);
-                setPoll(pollData);
-
-                // Determine active slide
-                const active = slidesWithOptions.find(s => s.id === pollData.active_slide_id) || slidesWithOptions[0];
-                setActiveOriginalSlide(active);
-            }
-        } catch (err) {
-            console.error("Unexpected error:", err);
-        } finally {
-            setLoading(false);
-        }
-    }, [code]);
-
-    // Initial Fetch
     useEffect(() => {
         fetchPollData();
-    }, [fetchPollData]);
+    }, [code]);
 
-    // Realtime Subscription
+    const fetchPollData = async () => {
+        const response = await fetch(`/api/poll?code=${code}`);
+        const data = await response.json();
+
+        if (data.error) {
+            setLoading(false);
+            return;
+        }
+
+        setPoll(data);
+        const live = data.slides.find((s: SlideWithOptions) => s.id === data.active_slide_id) || data.slides[0];
+        setLiveSlideId(live.id);
+        setActiveSlide(live);
+        setViewingLive(true);
+
+        if (data.userVotedSlideIds) {
+            setVotedSlides(new Set(data.userVotedSlideIds));
+        }
+
+        setLoading(false);
+    };
+
+    // Real-time subscriptions
     useEffect(() => {
         if (!poll) return;
 
         const channel = supabase
             .channel(`vote-${code}`)
-            .on(
-                "postgres_changes",
-                { event: "UPDATE", schema: "public", table: "polls", filter: `code=eq.${code}` },
+            .on("postgres_changes", { event: "UPDATE", schema: "public", table: "polls", filter: `code=eq.${code}` },
                 (payload) => {
-                    console.log("VOTE: Realtime Poll Update:", payload);
-                    // Active slide changed
-                    const newPoll = payload.new as Poll;
-                    if (newPoll.active_slide_id) {
-                        setPoll((prev) => {
-                            if (prev?.active_slide_id !== newPoll.active_slide_id) {
-                                console.log("VOTE: Switching active slide to", newPoll.active_slide_id);
-                                setVoted(false); // Reset vote state for new slide
-                                setText("");
-                            }
-                            return { ...prev, ...newPoll };
-                        });
+                    const newPoll = payload.new as any;
+                    setLiveSlideId(newPoll.active_slide_id);
+
+                    // If user is following live or hasn't manually navigated away significantly, maybe snap them?
+                    // User request: "Presenter viewer everyone should be able to change slide page to see"
+                    // Implies we probably SHOULDN'T force them unless they are in "Live Mode".
+
+                    if (viewingLive) {
+                        const newActive = poll.slides.find(s => s.id === newPoll.active_slide_id);
+                        if (newActive) {
+                            setActiveSlide(newActive);
+                            setText("");
+                        }
                     }
                 }
             )
-            .on(
-                "postgres_changes",
-                { event: "UPDATE", schema: "public", table: "options" },
+            .on("postgres_changes", { event: "UPDATE", schema: "public", table: "options" },
                 (payload) => {
-                    // Update vote counts
-                    const updatedOption = payload.new as Option;
-                    setSlides((prevSlides) =>
-                        prevSlides.map(slide => {
-                            if (slide.id === updatedOption.slide_id) {
-                                return {
-                                    ...slide,
-                                    options: slide.options.map(opt =>
-                                        opt.id === updatedOption.id ? updatedOption : opt
-                                    )
-                                };
-                            }
-                            return slide;
-                        })
-                    );
+                    const updatedOption = payload.new as any;
+                    setActiveSlide((currentSlide) => {
+                        if (currentSlide && currentSlide.options.some(opt => opt.id === updatedOption.id)) {
+                            return {
+                                ...currentSlide,
+                                options: currentSlide.options.map(opt =>
+                                    opt.id === updatedOption.id ? { ...opt, ...updatedOption } : opt
+                                )
+                            };
+                        }
+                        return currentSlide;
+                    });
                 }
             )
-            .on(
-                "postgres_changes",
-                { event: "INSERT", schema: "public", table: "options" },
+            .on("postgres_changes", { event: "INSERT", schema: "public", table: "options" },
                 (payload) => {
-                    console.log("VOTE: Realtime New Option:", payload);
-                    const newOption = payload.new as Option;
-                    // Handle new word cloud options appearing real-time
-                    setSlides((prevSlides) =>
-                        prevSlides.map(slide => {
-                            if (slide.id === newOption.slide_id) {
-                                return {
-                                    ...slide,
-                                    options: [...slide.options, newOption]
-                                };
-                            }
-                            return slide;
-                        })
-                    );
+                    const newOption = payload.new as any;
+                    setActiveSlide((currentSlide) => {
+                        if (currentSlide && newOption.slide_id === currentSlide.id) {
+                            if (currentSlide.options.some(opt => opt.id === newOption.id)) return currentSlide;
+                            return {
+                                ...currentSlide,
+                                options: [...currentSlide.options, newOption]
+                            };
+                        }
+                        return currentSlide;
+                    });
                 }
             )
             .subscribe();
@@ -149,70 +104,34 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [code, poll?.id]);
-
-    // Update active slide object when poll state or slides change
-    useEffect(() => {
-        if (poll && slides.length > 0) {
-            const active = slides.find(s => s.id === poll.active_slide_id) || slides[0];
-            setActiveOriginalSlide(active);
-        }
-    }, [poll?.active_slide_id, slides, poll]); // Specific dependency
+    }, [code, poll, viewingLive]);
 
     const handleVote = async (optionId?: string) => {
-        if (!activeOriginalSlide) return;
+        if (!activeSlide) return;
         setSubmitting(true);
+
         try {
-            if (activeOriginalSlide.type === "quiz" && optionId) {
-                // Call RPC for atomic increment
-                await supabase.rpc("vote_for_option", { option_id: optionId });
-
-                // Optimistic Update
-                setSlides(prev => prev.map(s => {
-                    if (s.id === activeOriginalSlide.id) {
-                        return {
-                            ...s,
-                            options: s.options.map(o => o.id === optionId ? { ...o, vote_count: o.vote_count + 1 } : o)
-                        };
-                    }
-                    return s;
-                }));
-            } else if (activeOriginalSlide.type === "word-cloud" && text.trim()) {
-                const normalizedText = text.trim();
-                const existing = activeOriginalSlide.options.find(o => o.text.toLowerCase() === normalizedText.toLowerCase());
-
-                if (existing) {
-                    await supabase.rpc("vote_for_option", { option_id: existing.id });
-
-                    // Optimistic Update
-                    setSlides(prev => prev.map(s => {
-                        if (s.id === activeOriginalSlide.id) {
-                            return {
-                                ...s,
-                                options: s.options.map(o => o.id === existing.id ? { ...o, vote_count: o.vote_count + 1 } : o)
-                            };
-                        }
-                        return s;
-                    }));
-                } else {
-                    const { data: newOpt } = await supabase.from("options").insert({
-                        slide_id: activeOriginalSlide.id,
-                        text: normalizedText,
-                        vote_count: 1,
-                        color: "#" + Math.floor(Math.random() * 16777215).toString(16)
-                    }).select().single();
-
-                    if (newOpt) {
-                        setSlides(prev => prev.map(s => {
-                            if (s.id === activeOriginalSlide.id) {
-                                return { ...s, options: [...s.options, newOpt] };
-                            }
-                            return s;
-                        }));
-                    }
-                }
+            const body: any = { code };
+            if (activeSlide.type === "quiz" && optionId) {
+                body.option_id = optionId;
+            } else if (activeSlide.type === "word-cloud" && text.trim()) {
+                body.text = text.trim();
             }
-            setVoted(true);
+
+            const response = await fetch("/api/vote", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                setVotedSlides(prev => new Set(prev).add(activeSlide.id));
+            } else if (response.status === 409) {
+                setVotedSlides(prev => new Set(prev).add(activeSlide.id)); // Treat as voted if conflict
+            } else {
+                alert(data.error || "Failed to submit vote");
+            }
         } catch (error) {
             console.error("Vote failed", error);
             alert("Failed to submit vote");
@@ -221,10 +140,35 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         }
     };
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500">Loading...</div>;
+    const navigateSlide = (direction: 'prev' | 'next') => {
+        if (!poll || !activeSlide) return;
+        const currentIndex = poll.slides.findIndex(s => s.id === activeSlide.id);
+        let newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
 
-    if (!poll || !activeOriginalSlide) return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4 text-center">
+        if (newIndex >= 0 && newIndex < poll.slides.length) {
+            const newSlide = poll.slides[newIndex];
+            setActiveSlide(newSlide);
+            setViewingLive(newSlide.id === liveSlideId);
+        }
+    };
+
+    const jumpToLive = () => {
+        if (!poll || !liveSlideId) return;
+        const liveSlide = poll.slides.find(s => s.id === liveSlideId);
+        if (liveSlide) {
+            setActiveSlide(liveSlide);
+            setViewingLive(true);
+        }
+    };
+
+    if (loading) return (
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+            <div className="text-gray-500">Loading...</div>
+        </div>
+    );
+
+    if (!poll || !activeSlide) return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4 text-center">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Poll not found</h1>
             <button onClick={() => router.push("/join")} className="text-indigo-600 hover:underline">
                 Go back to join
@@ -232,76 +176,150 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         </div>
     );
 
-    // Formatting for Result Component
-    const pollForResult = {
-        type: activeOriginalSlide.type,
-        options: activeOriginalSlide.options.map((o) => ({
-            text: o.text,
-            votes: o.vote_count,
-            color: o.color
-        }))
-    };
-
-    if (voted) return (
-        <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center">
-            <div className="w-full max-w-lg mb-6 text-center">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle2 className="w-6 h-6 text-green-600" />
-                </div>
-                <h1 className="text-2xl font-bold text-gray-900 mb-2">Vote Submitted!</h1>
-                <p className="text-gray-500">Here are the live results:</p>
-            </div>
-
-            <div className="w-full max-w-5xl bg-white p-4 rounded-xl shadow-sm border border-gray-100 min-h-[400px]">
-                <h2 className="text-xl font-bold text-center mb-6">{activeOriginalSlide.question}</h2>
-                {/* @ts-expect-error PollResults types */}
-                <PollResults poll={pollForResult} height={400} />
-            </div>
-
-            <p className="text-gray-400 text-sm mt-8 animate-pulse">Waiting for next slide...</p>
-        </div>
-    );
+    const hasVoted = votedSlides.has(activeSlide.id);
+    const totalVotes = activeSlide.options.reduce((sum, opt) => sum + opt.vote_count, 0);
+    const activeIndex = poll.slides.findIndex(s => s.id === activeSlide.id);
+    const isLive = activeSlide.id === liveSlideId;
 
     return (
-        <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center">
-            <div className="w-full max-w-lg mb-8">
-                <h1 className="text-2xl md:text-3xl font-bold text-center text-gray-900 leading-tight">
-                    {activeOriginalSlide.question}
-                </h1>
-            </div>
+        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 flex flex-col">
+            {/* Header / Navigation Status */}
+            {!isLive && (
+                <div className="w-full max-w-lg mx-auto mb-4">
+                    <button
+                        onClick={jumpToLive}
+                        className="w-full py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-200 transition-colors flex items-center justify-center gap-2 animate-pulse"
+                    >
+                        <span>🔴 Live poll is on a different slide. Tap to sync.</span>
+                    </button>
+                </div>
+            )}
 
-            <div className="w-full max-w-md space-y-4">
-                {activeOriginalSlide.type === "word-cloud" ? (
-                    <div className="space-y-4">
-                        <input
-                            type="text"
-                            value={text}
-                            onChange={(e) => setText(e.target.value)}
-                            className="w-full p-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-lg"
-                            placeholder="Type your answer here..."
-                            maxLength={50}
-                        />
-                        <button
-                            onClick={() => handleVote()}
-                            disabled={submitting || !text.trim()}
-                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-bold text-lg shadow-sm transition-all"
-                        >
-                            {submitting ? "Submitting..." : "Submit Answer"}
-                        </button>
+            <div className="flex-1 flex flex-col items-center justify-center">
+                {hasVoted ? (
+                    // RESULTS VIEW
+                    <div className="w-full max-w-lg">
+                        <div className="mb-8 text-center">
+                            {isLive && (
+                                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <CheckCircle2 className="w-6 h-6 text-green-600" />
+                                </div>
+                            )}
+                            <h1 className="text-3xl font-bold text-gray-900 mb-2 leading-tight">{activeSlide.question}</h1>
+                            <p className="text-gray-500">{isLive ? "Vote Submitted! Live Results:" : "Results:"}</p>
+                        </div>
+
+                        <div className="w-full bg-white p-6 rounded-2xl shadow-xl border border-gray-100">
+                            {activeSlide.type === "quiz" ? (
+                                <div className="space-y-4">
+                                    {activeSlide.options.map((option) => {
+                                        const percentage = totalVotes > 0 ? (option.vote_count / totalVotes) * 100 : 0;
+                                        return (
+                                            <div key={option.id}>
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="font-medium">{option.text}</span>
+                                                    <span className="text-sm text-gray-500">{option.vote_count} ({percentage.toFixed(1)}%)</span>
+                                                </div>
+                                                <div className="h-10 bg-gray-100 rounded-lg overflow-hidden">
+                                                    <div
+                                                        className="h-full transition-all duration-500"
+                                                        style={{
+                                                            width: `${percentage}%`,
+                                                            backgroundColor: option.color || "#6366f1"
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="flex flex-wrap gap-3 justify-center min-h-[300px] items-center">
+                                    {activeSlide.options.map((option) => (
+                                        <div
+                                            key={option.id}
+                                            className="px-5 py-2 rounded-full font-semibold text-white shadow-md transition-all"
+                                            style={{
+                                                backgroundColor: option.color || "#6366f1",
+                                                fontSize: `${Math.max(14, Math.min(36, 14 + (option.vote_count - 1) * 4))}px`
+                                            }}
+                                        >
+                                            {option.text}
+                                            {option.vote_count > 1 && <span className="ml-1 text-xs opacity-80">({option.vote_count})</span>}
+                                        </div>
+                                    ))}
+                                    {activeSlide.options.length === 0 && <p className="text-gray-400">No words yet.</p>}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 ) : (
-                    activeOriginalSlide.options.map((option) => (
-                        <button
-                            key={option.id}
-                            onClick={() => handleVote(option.id)}
-                            disabled={submitting}
-                            className="w-full p-4 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-indigo-500 hover:shadow-md hover:bg-indigo-50 transition-all text-left group"
-                        >
-                            <span className="text-lg font-medium text-gray-800 group-hover:text-indigo-900">{option.text}</span>
-                        </button>
-                    ))
+                    // VOTING VIEW
+                    <div className="w-full max-w-md flex flex-col items-center">
+                        <h1 className="text-3xl font-bold text-center text-gray-900 mb-8 leading-tight">
+                            {activeSlide.question}
+                        </h1>
+
+                        <div className="w-full space-y-4">
+                            {activeSlide.type === "word-cloud" ? (
+                                <div className="space-y-4">
+                                    <input
+                                        type="text"
+                                        value={text}
+                                        onChange={(e) => setText(e.target.value)}
+                                        className="w-full p-5 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-lg"
+                                        placeholder="Type your answer here..."
+                                        maxLength={100}
+                                    />
+                                    <button
+                                        onClick={() => handleVote()}
+                                        disabled={submitting || !text.trim()}
+                                        className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 text-white rounded-xl font-bold text-lg shadow-lg transition-all"
+                                    >
+                                        {submitting ? "Submitting..." : "Submit Answer"}
+                                    </button>
+                                </div>
+                            ) : (
+                                activeSlide.options.map((option) => (
+                                    <button
+                                        key={option.id}
+                                        onClick={() => handleVote(option.id)}
+                                        disabled={submitting}
+                                        className="w-full p-5 bg-white border-2 border-gray-200 rounded-xl shadow-md hover:border-indigo-500 hover:shadow-xl hover:scale-105 transition-all text-left group"
+                                    >
+                                        <span className="text-lg font-semibold text-gray-800 group-hover:text-indigo-900">
+                                            {option.text}
+                                        </span>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </div>
                 )}
             </div>
+
+            {/* Pagination Controls */}
+            {poll.slides.length > 1 && (
+                <div className="w-full max-w-lg mx-auto mt-8 flex justify-between items-center bg-white p-2 rounded-xl shadow-sm border border-gray-100">
+                    <button
+                        onClick={() => navigateSlide('prev')}
+                        disabled={activeIndex === 0}
+                        className="p-2 text-gray-600 hover:text-indigo-600 disabled:opacity-30 disabled:hover:text-gray-600"
+                    >
+                        Prev Slide
+                    </button>
+                    <span className="text-sm font-medium text-gray-500">
+                        {activeIndex + 1} / {poll.slides.length}
+                    </span>
+                    <button
+                        onClick={() => navigateSlide('next')}
+                        disabled={activeIndex === poll.slides.length - 1}
+                        className="p-2 text-gray-600 hover:text-indigo-600 disabled:opacity-30 disabled:hover:text-gray-600"
+                    >
+                        Next Slide
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

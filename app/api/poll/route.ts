@@ -1,158 +1,167 @@
 import { NextResponse } from "next/server";
-import { polls } from "@/lib/store";
+import { z } from "zod";
+import {
+    createPoll,
+    getPoll,
+    updateActiveSlide,
+} from "@/lib/services/poll.service";
+import { getVotedSlideIds } from "@/lib/services/voting.service";
+import { cookies } from "next/headers";
 
-// Helper to generate 6-digit code
-function generateCode() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-}
+// Validation schemas
+const createSlideSchema = z.object({
+    type: z.enum(["quiz", "word-cloud"]),
+    question: z.string().min(1, "Question is required"),
+    options: z.array(z.string()).optional(),
+});
 
-const COLORS = [
-    "#2563eb", // blue-600
-    "#dc2626", // red-600
-    "#16a34a", // green-600
-    "#d97706", // amber-600
-    "#7c3aed", // violet-600
-    "#db2777", // pink-600
-];
+const createPollSchema = z.object({
+    title: z.string().optional(),
+    slides: z.array(createSlideSchema).min(1, "At least one slide is required"),
+});
 
+const updateSlideSchema = z.object({
+    code: z.string().length(4, "Code must be 4 digits"),
+    slideId: z.string().uuid("Invalid slide ID"),
+});
+
+/**
+ * POST /api/poll - Create a new poll
+ */
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { question, options, type = "quiz", code, slides } = body;
 
-        let newSlides: any[] = [];
+        // Validate input
+        const validatedData = createPollSchema.parse(body);
 
-        if (slides && Array.isArray(slides)) {
-            // Processing initial slide deck
-            newSlides = slides.map((s: any) => ({
-                id: crypto.randomUUID(),
-                type: s.type || "quiz",
-                question: s.question,
-                options: (s.type === "quiz" && s.options) ? s.options.map((opt: string, idx: number) => ({
-                    id: crypto.randomUUID(),
-                    text: opt,
-                    votes: 0,
-                    color: COLORS[idx % COLORS.length]
-                })) : []
-            }));
-        } else if (question) {
-            // Single question creation
-            newSlides = [{
-                id: crypto.randomUUID(),
-                type,
-                question,
-                options: type === "quiz" ? options.map((opt: string, index: number) => ({
-                    id: crypto.randomUUID(),
-                    text: opt,
-                    votes: 0,
-                    color: COLORS[index % COLORS.length]
-                })) : []
-            }];
-        } else {
-            return NextResponse.json({ error: "Invalid data" }, { status: 400 });
-        }
+        // Create poll (presenter_id is optional for now)
+        const { poll, code } = await createPoll(validatedData);
 
-        let id = code;
-        if (!id) {
-            id = generateCode();
-            while (polls[id]) {
-                id = generateCode();
-            }
-        }
-
-        if (polls[id]) {
-            // Append to existing poll
-            const poll = polls[id];
-            poll.slides.push(...newSlides);
-            poll.activeSlideIndex = poll.slides.length - 1; // Auto switch to new slide
-        } else {
-            // Create new poll
-            polls[id] = {
-                id,
-                slides: newSlides,
-                activeSlideIndex: 0,
-                createdAt: Date.now(),
-            };
-        }
-
-        const poll = polls[id];
-        const activeSlide = poll.slides[poll.activeSlideIndex];
-
-        const responseData = {
-            ...poll,
-            ...activeSlide,
-            activeQuestionId: activeSlide.id,
-        };
-
-        try {
-            const { pusherServer } = await import("@/lib/pusher");
-            await pusherServer.trigger(`poll-${id}`, "poll-update", responseData);
-        } catch (e) {
-            console.error("Pusher trigger failed", e);
-        }
-
-        return NextResponse.json({ success: true, code: id, poll: responseData });
+        return NextResponse.json({
+            success: true,
+            code,
+            poll,
+        });
     } catch (error) {
+        if (error instanceof z.ZodError) {
+            return NextResponse.json(
+                { error: "Validation error", details: error.errors },
+                { status: 400 }
+            );
+        }
+
         console.error("Error creating poll:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : "Internal Server Error" },
+            { status: 500 }
+        );
     }
 }
 
+/**
+ * GET /api/poll?code=1234 - Get poll data
+ */
+export async function GET(req: Request) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const code = searchParams.get("code");
+
+        if (!code) {
+            return NextResponse.json(
+                { error: "Code parameter is required" },
+                { status: 400 }
+            );
+        }
+
+        if (code.length !== 4) {
+            return NextResponse.json(
+                { error: "Code must be 4 digits" },
+                { status: 400 }
+            );
+        }
+
+        const poll = await getPoll(code);
+
+        if (!poll) {
+            return NextResponse.json(
+                { error: "Poll not found" },
+                { status: 404 }
+            );
+        }
+
+        // Check for voter session to determine voted slides
+        const cookieStore = await cookies();
+        const sessionId = cookieStore.get("voter_session_id")?.value;
+        let userVotedSlideIds: string[] = [];
+
+        if (sessionId) {
+            const slideIds = poll.slides.map((s) => s.id);
+            userVotedSlideIds = await getVotedSlideIds(code, slideIds, sessionId);
+        }
+
+        return NextResponse.json({ ...poll, userVotedSlideIds });
+    } catch (error) {
+        console.error("Error fetching poll:", error);
+        return NextResponse.json(
+            { error: "Internal Server Error" },
+            { status: 500 }
+        );
+    }
+}
+
+/**
+ * PUT /api/poll - Update active slide
+ */
 export async function PUT(req: Request) {
     try {
         const body = await req.json();
-        const { code, index } = body;
 
-        if (!code) return NextResponse.json({ error: "Missing code" }, { status: 400 });
+        // Validate input
+        const { code, slideId } = updateSlideSchema.parse(body);
 
-        const poll = polls[code];
-        if (!poll) return NextResponse.json({ error: "Poll not found" }, { status: 404 });
+        await updateActiveSlide(code, slideId);
 
-        if (typeof index === "number" && index >= 0 && index < poll.slides.length) {
-            poll.activeSlideIndex = index;
-
-            const activeSlide = poll.slides[poll.activeSlideIndex];
-            const responseData = {
-                ...poll,
-                ...activeSlide,
-                activeQuestionId: activeSlide.id,
-            };
-
-            try {
-                const { pusherServer } = await import("@/lib/pusher");
-                await pusherServer.trigger(`poll-${code}`, "poll-update", responseData);
-            } catch (e) {
-                console.error("Pusher trigger", e);
-            }
-            return NextResponse.json({ success: true, poll: responseData });
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return NextResponse.json(
+                { error: "Validation error", details: error.errors },
+                { status: 400 }
+            );
         }
 
-        return NextResponse.json({ error: "Invalid index" }, { status: 400 });
-    } catch (error) {
-        return NextResponse.json({ error: "Error" }, { status: 500 });
+        console.error("Error updating poll:", error);
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : "Internal Server Error" },
+            { status: 500 }
+        );
     }
 }
 
-export async function GET(req: Request) {
-    const { searchParams } = new URL(req.url);
-    const code = searchParams.get("code");
+/**
+ * DELETE /api/poll?code=1234 - Delete a poll
+ */
+export async function DELETE(req: Request) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const code = searchParams.get("code");
 
-    if (!code) {
-        return NextResponse.json({ error: "Code is required" }, { status: 400 });
+        if (!code || code.length !== 4) {
+            return NextResponse.json(
+                { error: "Valid 4-digit code is required" },
+                { status: 400 }
+            );
+        }
+
+        await deletePoll(code);
+
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error("Error deleting poll:", error);
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : "Internal Server Error" },
+            { status: 500 }
+        );
     }
-
-    const poll = polls[code];
-
-    if (!poll) {
-        return NextResponse.json({ error: "Poll not found" }, { status: 404 });
-    }
-
-    const activeSlide = poll.slides[poll.activeSlideIndex];
-    const responseData = {
-        ...poll,
-        ...activeSlide,
-        activeQuestionId: activeSlide.id,
-    };
-
-    return NextResponse.json(responseData);
 }
