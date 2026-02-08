@@ -41,6 +41,12 @@ export async function createPoll(
 ): Promise<{ poll: Poll; code: string }> {
     const code = await generatePollCode();
 
+    // Calculate expiration based on authentication
+    const isAuthenticated = !!presenterId;
+    const expirationHours = isAuthenticated ? 24 : 3; // 24h for logged-in, 3h for anonymous
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + expirationHours);
+
     // 1. Create poll in Supabase for persistence
     const { data: pollData, error: pollError } = await supabase
         .from("polls")
@@ -48,6 +54,9 @@ export async function createPoll(
             code,
             title: input.title || input.slides[0]?.question || "Untitled Poll",
             presenter_id: presenterId,
+            user_id: presenterId || null,
+            status: 'active',
+            expires_at: expiresAt.toISOString(),
         })
         .select()
         .single();
@@ -62,6 +71,7 @@ export async function createPoll(
         type: slide.type,
         question: slide.question,
         order_index: index,
+        style: 'donut', // Default style, can be changed later
     }));
 
     const { data: insertedSlides, error: slidesError } = await supabase

@@ -36,13 +36,30 @@ export async function POST(req: Request) {
         // Validate input
         const validatedData = createPollSchema.parse(body);
 
-        // Create poll (presenter_id is optional for now)
-        const { poll, code } = await createPoll(validatedData);
+        // Check for authentication (optional)
+        let userId: string | undefined;
+        const authHeader = req.headers.get("authorization");
+
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            try {
+                const token = authHeader.split("Bearer ")[1];
+                const { data: { user } } = await import('@/lib/supabaseClient').then(m => m.supabase.auth.getUser(token));
+                if (user) {
+                    userId = user.id;
+                }
+            } catch {
+                // Authentication failed, continue as anonymous
+            }
+        }
+
+        // Create poll (with userId if authenticated, undefined if anonymous)
+        const { poll, code } = await createPoll(validatedData, userId);
 
         return NextResponse.json({
             success: true,
             code,
             poll,
+            expiresIn: userId ? '24 hours' : '3 hours', // Let frontend know expiration
         });
     } catch (error) {
         if (error instanceof z.ZodError) {
