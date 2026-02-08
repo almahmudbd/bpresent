@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { CheckCircle2 } from "lucide-react";
 import { type PollWithSlides, type SlideWithOptions } from "@/lib/types";
+import { BarChart } from "@/components/charts/BarChart";
+import { PieChart } from "@/components/charts/PieChart";
+import { CloudLayout } from "@/components/wordcloud/CloudLayout";
+import { BubbleLayout } from "@/components/wordcloud/BubbleLayout";
+import { ThankYouSlide } from "@/components/ThankYouSlide";
 
 export default function VotePage({ params }: { params: Promise<{ code: string }> }) {
     const { code } = use(params);
@@ -17,31 +22,66 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
     const [votedSlides, setVotedSlides] = useState<Set<string>>(new Set());
     const [text, setText] = useState("");
     const [viewingLive, setViewingLive] = useState(true);
+    const [isCompleted, setIsCompleted] = useState(false);
 
     useEffect(() => {
         fetchPollData();
-    }, [code]);
 
-    const fetchPollData = async () => {
-        const response = await fetch(`/api/poll?code=${code}`);
-        const data = await response.json();
+        // Polling fallback (every 5 seconds)
+        const interval = setInterval(() => {
+            fetchPollData(true);
+        }, 5000);
 
-        if (data.error) {
+        return () => clearInterval(interval);
+    }, [code, viewingLive]); // viewingLive dependency to ensure correct snap behavior during polling
+
+    const fetchPollData = async (isPolling = false) => {
+        if (!isPolling) setLoading(true);
+        try {
+            const response = await fetch(`/api/poll?code=${code}`);
+            const data = await response.json();
+
+            if (data.error) {
+                setLoading(false);
+                return;
+            }
+
+            setPoll(data);
+            const live = data.slides.find((s: SlideWithOptions) => s.id === data.active_slide_id) || data.slides[0];
+            setLiveSlideId(live.id);
+
+            if (!isPolling) {
+                setActiveSlide(live);
+                setViewingLive(true);
+                if (data.userVotedSlideIds) {
+                    setVotedSlides(new Set(data.userVotedSlideIds));
+                }
+                if (data.status === 'completed' || data.status === 'expired') {
+                    setIsCompleted(true);
+                }
+            } else {
+                // Polling update: Update active slide data without forcing navigation unless needed
+                setActiveSlide(prev => {
+                    if (!prev) return live;
+                    const freshSlide = data.slides.find((s: SlideWithOptions) => s.id === prev.id);
+                    return freshSlide || prev;
+                });
+
+                // If handling "Sync to Live" logic implies we should follow the presenter:
+                if (viewingLive && live.id !== activeSlide?.id) {
+                    setActiveSlide(live);
+                    setText("");
+                }
+
+                if (data.status === 'completed' || data.status === 'expired') {
+                    setIsCompleted(true);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to fetch poll data", error);
+        } finally {
             setLoading(false);
-            return;
         }
-
-        setPoll(data);
-        const live = data.slides.find((s: SlideWithOptions) => s.id === data.active_slide_id) || data.slides[0];
-        setLiveSlideId(live.id);
-        setActiveSlide(live);
-        setViewingLive(true);
-
-        if (data.userVotedSlideIds) {
-            setVotedSlides(new Set(data.userVotedSlideIds));
-        }
-
-        setLoading(false);
     };
 
     // Real-time subscriptions
@@ -54,6 +94,9 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
                 (payload) => {
                     const newPoll = payload.new as any;
                     setLiveSlideId(newPoll.active_slide_id);
+                    if (newPoll.status === 'completed' || newPoll.status === 'expired') {
+                        setIsCompleted(true);
+                    }
 
                     // If user is following live or hasn't manually navigated away significantly, maybe snap them?
                     // User request: "Presenter viewer everyone should be able to change slide page to see"
@@ -176,6 +219,22 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         </div>
     );
 
+    if (isCompleted) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 flex flex-col items-center justify-center">
+                <div className="w-full max-w-lg">
+                    <ThankYouSlide
+                        pollId={poll.id}
+                        pollTitle={poll.title}
+                        totalParticipants={activeSlide.options.reduce((acc, curr) => acc + curr.vote_count, 0)}
+                        totalVotes={poll.slides.reduce((acc, s) => acc + s.options.reduce((oAcc, o) => oAcc + o.vote_count, 0), 0)}
+                        completionTime={new Date()}
+                    />
+                </div>
+            </div>
+        );
+    }
+
     const hasVoted = votedSlides.has(activeSlide.id);
     const totalVotes = activeSlide.options.reduce((sum, opt) => sum + opt.vote_count, 0);
     const activeIndex = poll.slides.findIndex(s => s.id === activeSlide.id);
@@ -212,43 +271,46 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
                         <div className="w-full bg-white p-6 rounded-2xl shadow-xl border border-gray-100">
                             {activeSlide.type === "quiz" ? (
                                 <div className="space-y-4">
-                                    {activeSlide.options.map((option) => {
-                                        const percentage = totalVotes > 0 ? (option.vote_count / totalVotes) * 100 : 0;
-                                        return (
-                                            <div key={option.id}>
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <span className="font-medium">{option.text}</span>
-                                                    <span className="text-sm text-gray-500">{option.vote_count} ({percentage.toFixed(1)}%)</span>
-                                                </div>
-                                                <div className="h-10 bg-gray-100 rounded-lg overflow-hidden">
-                                                    <div
-                                                        className="h-full transition-all duration-500"
-                                                        style={{
-                                                            width: `${percentage}%`,
-                                                            backgroundColor: option.color || "#6366f1"
-                                                        }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                    {/* Dynamic chart style rendering */}
+                                    {activeSlide.style === "bar" ? (
+                                        <BarChart data={activeSlide.options} />
+                                    ) : activeSlide.style === "pie" ? (
+                                        <PieChart data={activeSlide.options} />
+                                    ) : (
+                                        // Default: horizontal bars (original style)
+                                        <>
+                                            {activeSlide.options.map((option) => {
+                                                const percentage = totalVotes > 0 ? (option.vote_count / totalVotes) * 100 : 0;
+                                                return (
+                                                    <div key={option.id}>
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <span className="font-medium">{option.text}</span>
+                                                            <span className="text-sm text-gray-500">{option.vote_count} ({percentage.toFixed(1)}%)</span>
+                                                        </div>
+                                                        <div className="h-10 bg-gray-100 rounded-lg overflow-hidden">
+                                                            <div
+                                                                className="h-full transition-all duration-500"
+                                                                style={{
+                                                                    width: `${percentage}%`,
+                                                                    backgroundColor: option.color || "#6366f1"
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </>
+                                    )}
                                 </div>
                             ) : (
-                                <div className="flex flex-wrap gap-3 justify-center min-h-[300px] items-center">
-                                    {activeSlide.options.map((option) => (
-                                        <div
-                                            key={option.id}
-                                            className="px-5 py-2 rounded-full font-semibold text-white shadow-md transition-all"
-                                            style={{
-                                                backgroundColor: option.color || "#6366f1",
-                                                fontSize: `${Math.max(14, Math.min(36, 14 + (option.vote_count - 1) * 4))}px`
-                                            }}
-                                        >
-                                            {option.text}
-                                            {option.vote_count > 1 && <span className="ml-1 text-xs opacity-80">({option.vote_count})</span>}
-                                        </div>
-                                    ))}
-                                    {activeSlide.options.length === 0 && <p className="text-gray-400">No words yet.</p>}
+                                <div className="min-h-[300px]">
+                                    {/* Dynamic word cloud style rendering */}
+                                    {activeSlide.style === "bubble" ? (
+                                        <BubbleLayout words={activeSlide.options.map(opt => ({ id: opt.id, text: opt.text, count: opt.vote_count }))} />
+                                    ) : (
+                                        // Default: cloud layout
+                                        <CloudLayout words={activeSlide.options.map(opt => ({ id: opt.id, text: opt.text, count: opt.vote_count }))} />
+                                    )}
                                 </div>
                             )}
                         </div>

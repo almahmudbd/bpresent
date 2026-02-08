@@ -2,9 +2,14 @@
 
 import { useEffect, useState, use } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon } from "lucide-react";
+import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon, Plus } from "lucide-react";
 import { type PollWithSlides, type SlideWithOptions } from "@/lib/types";
 import { QRCodeSVG } from "qrcode.react";
+import { BarChart } from "@/components/charts/BarChart";
+import { PieChart } from "@/components/charts/PieChart";
+import { CloudLayout } from "@/components/wordcloud/CloudLayout";
+import { BubbleLayout } from "@/components/wordcloud/BubbleLayout";
+import { ThankYouSlide } from "@/components/ThankYouSlide";
 
 // Themes definition
 const THEMES = {
@@ -48,34 +53,68 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     const [showThemes, setShowThemes] = useState(false);
     const [isSyncMode, setIsSyncMode] = useState(true); // Default to sync mode
     const [liveSlideId, setLiveSlideId] = useState<string | null>(null); // Track what the audience sees
+    const [showThankYou, setShowThankYou] = useState(false);
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [newSlideType, setNewSlideType] = useState<"quiz" | "word-cloud">("quiz");
+    const [newQuestion, setNewQuestion] = useState("");
+    const [newOptions, setNewOptions] = useState(["", ""]);
+    const [isAddingSlide, setIsAddingSlide] = useState(false);
 
     useEffect(() => {
         setOrigin(window.location.origin);
         fetchPollData();
-    }, [code]);
 
-    const fetchPollData = async () => {
-        setRefreshing(true);
-        const response = await fetch(`/api/poll?code=${code}`);
-        const data = await response.json();
+        // Polling fallback (every 5 seconds)
+        const interval = setInterval(() => {
+            fetchPollData(true);
+        }, 5000);
 
-        setRefreshing(false);
+        return () => clearInterval(interval);
+    }, [code, isSyncMode]); // Re-create interval if sync mode changes to capture correct state in closure? 
+    // Actually better to use ref or dependency, but fetching is stateless regarding isSyncMode except for the logic inside.
 
-        if (data.error) {
+    const fetchPollData = async (isPolling = false) => {
+        if (!isPolling) setRefreshing(true);
+
+        try {
+            const response = await fetch(`/api/poll?code=${code}`);
+            const data = await response.json();
+
+            setRefreshing(false);
+
+            if (data.error) {
+                setLoading(false);
+                return;
+            }
+
+            setPoll(data);
+            setLiveSlideId(data.active_slide_id);
+
+            // Logic to update active slide
+            if (!activeSlide) {
+                // First load
+                const active = data.slides.find((s: SlideWithOptions) => s.id === data.active_slide_id) || data.slides[0];
+                setActiveSlide(active);
+            } else {
+                // Update current active slide data (vote counts etc.)
+                // regardless of sync mode, we want the current view to reflect new data
+                const freshActive = data.slides.find((s: SlideWithOptions) => s.id === activeSlide.id);
+                if (freshActive) {
+                    setActiveSlide(freshActive);
+                }
+
+                // If in Sync Mode, ensure we are on the live slide
+                if (isSyncMode && data.active_slide_id !== activeSlide.id) {
+                    const live = data.slides.find((s: SlideWithOptions) => s.id === data.active_slide_id);
+                    if (live) setActiveSlide(live);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to fetch poll data", error);
+            setRefreshing(false);
+        } finally {
             setLoading(false);
-            return;
         }
-
-        setPoll(data);
-        setLiveSlideId(data.active_slide_id);
-
-        // If we were loading or in sync mode, set active slide to live slide
-        if (!activeSlide || isSyncMode) {
-            const active = data.slides.find((s: SlideWithOptions) => s.id === data.active_slide_id) || data.slides[0];
-            setActiveSlide(active);
-        }
-
-        setLoading(false);
     };
 
     // Real-time subscriptions
@@ -149,8 +188,15 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     };
 
     const navigateSlide = async (newIndex: number) => {
+        // Check if navigating past last slide
+        if (poll && newIndex >= poll.slides.length) {
+            setShowThankYou(true);
+            return;
+        }
+
         if (!poll || !poll.slides[newIndex]) return;
 
+        setShowThankYou(false);
         const newSlide = poll.slides[newIndex];
 
         // Optimistically update local view
@@ -158,9 +204,15 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
 
         // Only update server if in Sync Mode
         if (isSyncMode) {
+            const { data: { session } } = await supabase.auth.getSession();
+            const headers: HeadersInit = { "Content-Type": "application/json" };
+            if (session?.access_token) {
+                headers["Authorization"] = `Bearer ${session.access_token}`;
+            }
+
             await fetch("/api/poll", {
                 method: "PUT",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify({ code, slideId: newSlide.id }),
             });
             // liveSlideId will be updated via Realtime or next fetch, but we can optimistically set it too?
@@ -172,9 +224,16 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     // Explicit broadcast function for Preview Mode
     const broadcastSlide = async () => {
         if (!activeSlide) return;
+
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: HeadersInit = { "Content-Type": "application/json" };
+        if (session?.access_token) {
+            headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
+
         await fetch("/api/poll", {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify({ code, slideId: activeSlide.id }),
         });
         setLiveSlideId(activeSlide.id);
@@ -208,6 +267,110 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
             <div className="text-gray-500">Poll not found</div>
         </div>
     );
+
+    const completePoll = async () => {
+        if (!poll) return;
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const headers: HeadersInit = { "Content-Type": "application/json" };
+            if (session?.access_token) {
+                headers["Authorization"] = `Bearer ${session.access_token}`;
+            }
+
+            await fetch("/api/poll", {
+                method: "PUT",
+                headers,
+                body: JSON.stringify({ code, status: "completed" }),
+            });
+            // Optional: Redirect or show confirmation
+        } catch (error) {
+            console.error("Failed to complete poll", error);
+        }
+    };
+
+    const handleAddSlide = async () => {
+        if (!newQuestion.trim()) return;
+        if (newSlideType === "quiz" && newOptions.some(opt => !opt.trim())) return;
+
+        setIsAddingSlide(true);
+        try {
+            const body: any = {
+                code,
+                type: newSlideType,
+                question: newQuestion,
+            };
+
+            if (newSlideType === "quiz") {
+                body.options = newOptions.filter(o => o.trim());
+                body.style = "bar"; // Default style for quick add
+            } else {
+                body.style = "cloud";
+            }
+
+            const { data: { session } } = await supabase.auth.getSession();
+            const headers: HeadersInit = { "Content-Type": "application/json" };
+            if (session?.access_token) {
+                headers["Authorization"] = `Bearer ${session.access_token}`;
+            }
+
+            const response = await fetch("/api/poll/slide", {
+                method: "POST",
+                headers,
+                body: JSON.stringify(body),
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                // Refresh data
+                await fetchPollData();
+                setShowAddModal(false);
+                setNewQuestion("");
+                setNewOptions(["", ""]);
+                // Optional: Navigate to new slide?
+                // The new slide is appended. 
+                // We could navigateSlide(poll.slides.length but need updated poll first)
+            } else {
+                alert(data.error || "Failed to add slide");
+            }
+        } catch (error) {
+            console.error("Failed to add slide", error);
+        } finally {
+            setIsAddingSlide(false);
+        }
+    };
+
+    if (showThankYou) {
+        return (
+            <div className={`min-h-screen ${THEMES[currentTheme].bgGradient} p-6 flex flex-col`}>
+                <div className="w-full max-w-6xl mx-auto mb-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <button
+                            onClick={() => {
+                                setShowThankYou(false);
+                                navigateSlide(poll.slides.length - 1);
+                            }}
+                            className="flex items-center text-gray-600 hover:text-indigo-600"
+                        >
+                            <ChevronLeft className="w-4 h-4 mr-1" /> Back to Slides
+                        </button>
+                        <button
+                            onClick={completePoll}
+                            className="px-4 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg font-medium transition-colors"
+                        >
+                            End Poll for Everyone
+                        </button>
+                    </div>
+                    <ThankYouSlide
+                        pollId={poll.id}
+                        pollTitle={poll.title}
+                        totalParticipants={participantCount || activeSlide.options.reduce((acc, curr) => acc + curr.vote_count, 0)}
+                        totalVotes={poll.slides.reduce((acc, s) => acc + s.options.reduce((oAcc, o) => oAcc + o.vote_count, 0), 0)}
+                        completionTime={new Date()}
+                    />
+                </div>
+            </div>
+        );
+    }
 
     const totalVotes = activeSlide.options.reduce((sum, opt) => sum + opt.vote_count, 0);
     const activeIndex = poll.slides.findIndex(s => s.id === activeSlide.id);
@@ -331,75 +494,95 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
 
                     {activeSlide.type === "quiz" ? (
                         <div className="space-y-6 relative z-10">
-                            {activeSlide.options.map((option, index) => {
-                                const percentage = totalVotes > 0 ? (option.vote_count / totalVotes) * 100 : 0;
-                                const color = theme.colors[index % theme.colors.length];
+                            {activeSlide.style === "bar" ? (
+                                <div className="h-[400px]">
+                                    <BarChart data={activeSlide.options.map(opt => ({ ...opt, color: opt.color || theme.colors[0] }))} />
+                                </div>
+                            ) : activeSlide.style === "pie" ? (
+                                <div className="h-[400px]">
+                                    <PieChart data={activeSlide.options.map((opt, i) => ({ ...opt, color: theme.colors[i % theme.colors.length] }))} />
+                                </div>
+                            ) : (
+                                // Default Donut/Horizontal Bar
+                                activeSlide.options.map((option, index) => {
+                                    const percentage = totalVotes > 0 ? (option.vote_count / totalVotes) * 100 : 0;
+                                    const color = theme.colors[index % theme.colors.length];
 
-                                return (
-                                    <div key={option.id} className="relative group">
-                                        <div className="flex justify-between items-end mb-2 px-1">
-                                            <span className="font-semibold text-gray-800 text-lg">{option.text}</span>
-                                            <span className="text-gray-500 font-medium">
-                                                {option.vote_count} <span className="text-xs text-gray-400">({percentage.toFixed(1)}%)</span>
-                                            </span>
-                                        </div>
-                                        <div className="h-14 bg-gray-100/80 rounded-2xl overflow-hidden p-1.5 shadow-inner">
-                                            <div
-                                                className="h-full rounded-xl transition-all duration-700 ease-out flex items-center justify-end pr-4 shadow-sm relative overflow-hidden"
-                                                style={{
-                                                    width: `${Math.max(percentage, 1)}%`, // Keeping 1% min width for visibility
-                                                    backgroundColor: color
-                                                }}
-                                            >
-                                                <div className="absolute inset-0 bg-white/10"></div>
-                                                {percentage > 5 && (
-                                                    <span className="text-white font-bold drop-shadow-md z-10">{percentage.toFixed(0)}%</span>
-                                                )}
+                                    return (
+                                        <div key={option.id} className="relative group">
+                                            <div className="flex justify-between items-end mb-2 px-1">
+                                                <span className="font-semibold text-gray-800 text-lg">{option.text}</span>
+                                                <span className="text-gray-500 font-medium">
+                                                    {option.vote_count} <span className="text-xs text-gray-400">({percentage.toFixed(1)}%)</span>
+                                                </span>
+                                            </div>
+                                            <div className="h-14 bg-gray-100/80 rounded-2xl overflow-hidden p-1.5 shadow-inner">
+                                                <div
+                                                    className="h-full rounded-xl transition-all duration-700 ease-out flex items-center justify-end pr-4 shadow-sm relative overflow-hidden"
+                                                    style={{
+                                                        width: `${Math.max(percentage, 1)}%`,
+                                                        backgroundColor: color
+                                                    }}
+                                                >
+                                                    <div className="absolute inset-0 bg-white/10"></div>
+                                                    {percentage > 5 && (
+                                                        <span className="text-white font-bold drop-shadow-md z-10">{percentage.toFixed(0)}%</span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })
+                            )}
                         </div>
                     ) : (
                         <div className="flex flex-wrap gap-4 justify-center items-center h-full content-center p-8 relative z-10">
-                            {activeSlide.options.map((option, index) => {
-                                const color = theme.colors[index % theme.colors.length];
-                                return (
-                                    <div
-                                        key={option.id}
-                                        className="relative px-8 py-4 rounded-full font-bold text-white shadow-lg transition-all duration-500 hover:scale-110 cursor-default animate-in zoom-in"
-                                        style={{
-                                            backgroundColor: color,
-                                            fontSize: `${Math.max(16, Math.min(90, 16 + (option.vote_count - 1) * 12))}px`,
-                                            zIndex: option.vote_count,
-                                            opacity: 0.9 + (Math.min(option.vote_count, 10) / 100)
-                                        }}
-                                    >
-                                        {option.text}
-                                        {option.vote_count > 1 && (
-                                            <span
-                                                className="absolute -top-2 -right-2 bg-white/90 text-gray-800 flex items-center justify-center rounded-full shadow-lg border-2 border-transparent text-xs"
+                            {activeSlide.style === "bubble" ? (
+                                <BubbleLayout words={activeSlide.options.map(opt => ({ id: opt.id, text: opt.text, count: opt.vote_count }))} />
+                            ) : activeSlide.style === "cloud" ? (
+                                <CloudLayout words={activeSlide.options.map(opt => ({ id: opt.id, text: opt.text, count: opt.vote_count }))} />
+                            ) : (
+                                // Fallback/Default Layout
+                                <>
+                                    {activeSlide.options.map((option, index) => {
+                                        const color = theme.colors[index % theme.colors.length];
+                                        return (
+                                            <div
+                                                key={option.id}
+                                                className="relative px-8 py-4 rounded-full font-bold text-white shadow-lg transition-all duration-500 hover:scale-110 cursor-default animate-in zoom-in"
                                                 style={{
-                                                    width: '28px',
-                                                    height: '28px',
-                                                    minWidth: '28px'
+                                                    backgroundColor: color,
+                                                    fontSize: `${Math.max(16, Math.min(90, 16 + (option.vote_count - 1) * 12))}px`,
+                                                    zIndex: option.vote_count,
+                                                    opacity: 0.9 + (Math.min(option.vote_count, 10) / 100)
                                                 }}
                                             >
-                                                {option.vote_count}
-                                            </span>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                            {activeSlide.options.length === 0 && (
-                                <div className="text-center text-gray-400">
-                                    <div className="bg-gray-50 rounded-full p-8 mb-4 inline-block">
-                                        <RefreshCw className="w-12 h-12 text-gray-300 animate-spin-slow" />
-                                    </div>
-                                    <p className="text-2xl font-medium mb-2 opacity-60">Waiting for responses...</p>
-                                    <p className="opacity-40">Join and type a word to see it appear here!</p>
-                                </div>
+                                                {option.text}
+                                                {option.vote_count > 1 && (
+                                                    <span
+                                                        className="absolute -top-2 -right-2 bg-white/90 text-gray-800 flex items-center justify-center rounded-full shadow-lg border-2 border-transparent text-xs"
+                                                        style={{
+                                                            width: '28px',
+                                                            height: '28px',
+                                                            minWidth: '28px'
+                                                        }}
+                                                    >
+                                                        {option.vote_count}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                    {activeSlide.options.length === 0 && (
+                                        <div className="text-center text-gray-400">
+                                            <div className="bg-gray-50 rounded-full p-8 mb-4 inline-block">
+                                                <RefreshCw className="w-12 h-12 text-gray-300 animate-spin-slow" />
+                                            </div>
+                                            <p className="text-2xl font-medium mb-2 opacity-60">Waiting for responses...</p>
+                                            <p className="opacity-40">Join and type a word to see it appear here!</p>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     )}
@@ -414,9 +597,18 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                             <span className="text-sm font-medium">responses</span>
                         </div>
 
+                        {/* Add Slide Button */}
+                        <button
+                            onClick={() => setShowAddModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors font-medium border border-indigo-100"
+                        >
+                            <Plus className="w-4 h-4" />
+                            <span className="hidden sm:inline">Add Slide</span>
+                        </button>
+
                         {/* Manual Refresh Button */}
                         <button
-                            onClick={fetchPollData}
+                            onClick={() => fetchPollData(false)}
                             className={`flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-100 text-gray-500 hover:bg-gray-50 hover:text-indigo-600 transition-colors ${refreshing ? 'animate-pulse bg-indigo-50 text-indigo-500' : ''}`}
                             title="Force Refresh Data"
                         >
@@ -446,7 +638,7 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => navigateSlide(activeIndex - 1)}
-                                    disabled={activeIndex === 0}
+                                    disabled={activeIndex === 0 && !showThankYou}
                                     className="p-3 rounded-xl bg-gray-50 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-gray-50 transition-all border border-gray-100"
                                 >
                                     <ChevronLeft className="w-6 h-6 text-gray-700" />
@@ -466,6 +658,106 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                     </div>
                 </div>
             </div>
+            {/* Add Slide Modal */}
+            {showAddModal && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200">
+                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                            <h3 className="text-xl font-bold text-gray-900">Add New Slide</h3>
+                            <button
+                                onClick={() => setShowAddModal(false)}
+                                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-200 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Slide Type</label>
+                                <div className="flex gap-4">
+                                    <button
+                                        onClick={() => setNewSlideType("quiz")}
+                                        className={`flex-1 py-3 px-4 rounded-xl border-2 font-medium transition-all ${newSlideType === "quiz" ? "border-indigo-600 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
+                                    >
+                                        Multiple Choice
+                                    </button>
+                                    <button
+                                        onClick={() => setNewSlideType("word-cloud")}
+                                        className={`flex-1 py-3 px-4 rounded-xl border-2 font-medium transition-all ${newSlideType === "word-cloud" ? "border-indigo-600 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
+                                    >
+                                        Word Cloud
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Question</label>
+                                <input
+                                    type="text"
+                                    value={newQuestion}
+                                    onChange={(e) => setNewQuestion(e.target.value)}
+                                    placeholder="What would you like to ask?"
+                                    className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                />
+                            </div>
+
+                            {newSlideType === "quiz" && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Options</label>
+                                    <div className="space-y-2">
+                                        {newOptions.map((opt, idx) => (
+                                            <div key={idx} className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={opt}
+                                                    onChange={(e) => {
+                                                        const opts = [...newOptions];
+                                                        opts[idx] = e.target.value;
+                                                        setNewOptions(opts);
+                                                    }}
+                                                    placeholder={`Option ${idx + 1}`}
+                                                    className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                />
+                                                {newOptions.length > 2 && (
+                                                    <button
+                                                        onClick={() => setNewOptions(newOptions.filter((_, i) => i !== idx))}
+                                                        className="text-red-500 hover:bg-red-50 p-2 rounded-lg"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                        <button
+                                            onClick={() => setNewOptions([...newOptions, ""])}
+                                            className="text-indigo-600 text-sm font-medium hover:underline flex items-center gap-1"
+                                        >
+                                            <Plus className="w-3 h-3" /> Add Option
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowAddModal(false)}
+                                className="px-5 py-2.5 rounded-xl font-medium text-gray-600 hover:bg-gray-200 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleAddSlide}
+                                disabled={isAddingSlide || !newQuestion.trim() || (newSlideType === "quiz" && newOptions.some(o => !o.trim()))}
+                                className="px-5 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-lg shadow-indigo-200"
+                            >
+                                {isAddingSlide ? "Creating..." : "Create Slide"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

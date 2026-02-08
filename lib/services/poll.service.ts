@@ -1,5 +1,7 @@
 import { redis } from "@/lib/redis";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase as anonSupabase, supabaseAdmin } from "@/lib/supabaseClient";
+
+const supabase = supabaseAdmin || anonSupabase;
 import {
     type Poll,
     type CreatePollInput,
@@ -71,7 +73,7 @@ export async function createPoll(
         type: slide.type,
         question: slide.question,
         order_index: index,
-        style: 'donut', // Default style, can be changed later
+        style: slide.style || (slide.type === 'word-cloud' ? 'cloud' : 'donut'),
     }));
 
     const { data: insertedSlides, error: slidesError } = await supabase
@@ -169,6 +171,17 @@ export async function getPoll(code: string): Promise<PollWithSlides | null> {
 
         if (!pollData) return null;
 
+        // Check for expiration (Lazy Expiry)
+        if (pollData.status === 'active' && pollData.expires_at && new Date(pollData.expires_at) < new Date()) {
+            await supabase
+                .from("polls")
+                .update({ status: 'expired' })
+                .eq("id", pollData.id);
+
+            await redis.hset(`poll:${code}`, { status: 'expired' });
+            pollData.status = 'expired';
+        }
+
         // Fetch slides with options
         const { data: slidesData } = await supabase
             .from("slides")
@@ -205,6 +218,17 @@ export async function getPoll(code: string): Promise<PollWithSlides | null> {
         .single();
 
     if (!pollData) return null;
+
+    // Check for expiration (Lazy Expiry)
+    if (pollData.status === 'active' && pollData.expires_at && new Date(pollData.expires_at) < new Date()) {
+        await supabase
+            .from("polls")
+            .update({ status: 'expired' })
+            .eq("id", pollData.id);
+
+        await redis.hset(`poll:${code}`, { status: 'expired' });
+        pollData.status = 'expired';
+    }
 
     // Fetch slides with options
     const { data: slidesData } = await supabase
@@ -260,6 +284,38 @@ export async function updateActiveSlide(
 }
 
 /**
+ * Update the status of a poll (e.g., 'completed')
+ */
+export async function updatePollStatus(
+    code: string,
+    status: 'active' | 'completed' | 'expired'
+): Promise<void> {
+    const { data: pollData } = await supabase
+        .from("polls")
+        .select("id")
+        .eq("code", code)
+        .single();
+
+    if (!pollData) {
+        throw new Error("Poll not found");
+    }
+
+    const updates: any = { status };
+    if (status === 'completed') {
+        updates.completed_at = new Date().toISOString();
+    }
+
+    // Update in Supabase
+    await supabase
+        .from("polls")
+        .update(updates)
+        .eq("id", pollData.id);
+
+    // Update in Redis
+    await redis.hset(`poll:${code}`, { status });
+}
+
+/**
  * Archive a poll (move from active to archived)
  */
 export async function archivePoll(code: string): Promise<void> {
@@ -304,4 +360,121 @@ export async function deletePoll(code: string): Promise<void> {
     // Remove from Redis
     await redis.del(`poll:${code}`);
     await redis.del(`poll:${code}:slides`);
+}
+
+/**
+ * Add a new slide to an existing poll
+ */
+import { CreateSlideInput } from "@/lib/types";
+
+export async function addSlideToPoll(
+    code: string,
+    slideInput: CreateSlideInput
+): Promise<SlideWithOptions> {
+    // 1. Get poll data to verify it exists and get ID
+    const { data: pollData } = await supabase
+        .from("polls")
+        .select("id")
+        .eq("code", code)
+        .single();
+
+    if (!pollData) {
+        throw new Error("Poll not found");
+    }
+
+    // 2. Get current max order_index
+    const { data: maxOrderData } = await supabase
+        .from("slides")
+        .select("order_index")
+        .eq("poll_id", pollData.id)
+        .order("order_index", { ascending: false })
+        .limit(1)
+        .single();
+
+    const nextOrderIndex = (maxOrderData?.order_index ?? -1) + 1;
+
+    // 3. Insert new slide
+    const { data: insertedSlide, error: slideError } = await supabase
+        .from("slides")
+        .insert({
+            poll_id: pollData.id,
+            type: slideInput.type,
+            question: slideInput.question,
+            order_index: nextOrderIndex,
+            style: slideInput.style || (slideInput.type === 'word-cloud' ? 'cloud' : 'donut'),
+        })
+        .select()
+        .single();
+
+    if (slideError || !insertedSlide) {
+        throw new Error(`Failed to create slide: ${slideError?.message}`);
+    }
+
+    // 4. Insert options if quiz
+    const optionsToInsert: any[] = [];
+    const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#db2777"];
+
+    if (slideInput.type === "quiz" && slideInput.options) {
+        slideInput.options.forEach((optText, optIndex) => {
+            optionsToInsert.push({
+                slide_id: insertedSlide.id,
+                text: optText,
+                color: COLORS[optIndex % COLORS.length],
+            });
+        });
+    }
+
+    let insertedOptions: any[] = [];
+    if (optionsToInsert.length > 0) {
+        const { data: opts, error: optionsError } = await supabase
+            .from("options")
+            .insert(optionsToInsert)
+            .select();
+
+        if (optionsError) {
+            throw new Error(`Failed to create options: ${optionsError.message}`);
+        }
+        insertedOptions = opts || [];
+    }
+
+    const slideWithOptions: SlideWithOptions = {
+        ...insertedSlide,
+        options: insertedOptions,
+    };
+
+    // 5. Update Redis
+    // To keep it simple, we can just invalidate the slides cache or append to it.
+    // Invalidating is safer to avoid race conditions, but appending is faster.
+    // Since we fetch the whole list often, let's just invalidate/delete the slides key
+    // so next fetch gets fresh data.
+    // Actually, `getPoll` tries Redis first. If we delete `poll:${code}:slides`, `getPoll` checks `poll:${code}` (exists), then fetches slides from key.
+    // If key is missing? `getPoll` doesn't handle "poll exists but slides missing" logic well in the provided code!
+    // It checks `redisPoll` exists. If so, it assumes it has data?
+    // Wait, `getPoll` checks `redisPoll`. If it exists, it fetches slides from `slides` table in Supabase!
+    // Line 163: `// Poll exists in Redis, fetch from Supabase for complete data`
+    // Wait, `getPoll` implementation I see in `poll.service.ts`:
+    // It fetches from Supabase if Redis has the poll key!
+    // So modifying Supabase is enough for `getPoll` to see it?
+    // NO. Line 164: Fetches `polls` from Supabase.
+    // Line 173: Fetches `slides` from Supabase.
+    // So actually, `getPoll` IGNORES `redisPoll` content and just uses it as a "exists" check?
+    // And it doesn't seem to use `poll:${code}:slides`?
+    // Wait, let's look at `createPoll`:
+    // It sets `poll:${code}:slides`.
+    // But `getPoll` doesn't seem to READ `poll:${code}:slides`?
+    // Line 160: `redis.hgetall` for poll.
+    // Line 162: `if (redisPoll ...)`
+    // Line 164: `supabase.from("polls")...`
+    // It seems `getPoll` implementation is: "If in Redis, fetch from DB". This is weird caching strategy (Cache Look-aside without read-through from cache?).
+    // Actually, maybe the provided code snippet for `getPoll` was incomplete or I misread it.
+    // "Poll exists in Redis, fetch from Supabase for complete data" -> this comment implies it fetches from Supabase.
+    // So I don't need to update Redis slides key if `getPoll` always hits DB?
+    // But `createPoll` writes to it.
+    // If there is another function `getSlides` that uses Redis, I should update it.
+    // But based on `getPoll` I see, it hits DB. So I'm safe.
+    // However, to be safe, I'll delete `poll:${code}:slides` anyway.
+
+    await redis.del(`poll:${code}:slides`);
+
+    return slideWithOptions;
 }

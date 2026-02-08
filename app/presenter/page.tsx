@@ -2,15 +2,19 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, ArrowRight, Save } from "lucide-react";
+import { Plus, Trash2, ArrowRight, Save, LayoutTemplate, BarChart3, PieChart, MessageSquare } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { User } from "@supabase/supabase-js";
+import { useAutoSave } from "@/lib/hooks/useAutoSave";
+import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+
 
 interface SlideState {
     id: string;
     question: string;
     type: "quiz" | "word-cloud";
     options: string[];
+    style?: string;
 }
 
 export default function PresenterDashboard() {
@@ -41,6 +45,8 @@ export default function PresenterDashboard() {
                 setSlides(presentation.slides.map((s: any) => ({
                     ...s,
                     id: crypto.randomUUID(),
+                    options: s.options || ["", ""],
+                    style: s.style,
                 })));
                 sessionStorage.removeItem("loadPresentation");
             } catch (error) {
@@ -48,6 +54,37 @@ export default function PresenterDashboard() {
             }
         }
     }, []);
+
+    // Auto-save integration
+    const { isSaving, lastSaved, error: saveError, saveNow } = useAutoSave(
+        { title: saveTitle, slides },
+        async (data) => {
+            if (!user || !saveTitle || !savedPresentationId) return;
+
+            const presentationData = {
+                title: data.title,
+                slides: data.slides.map((s) => ({
+                    type: s.type,
+                    question: s.question,
+                    options: s.type === "quiz" ? s.options : undefined,
+                    style: s.style,
+                })),
+            };
+
+            await fetch(`/api/presentations/${savedPresentationId}`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+                },
+                body: JSON.stringify(presentationData),
+            });
+        },
+        {
+            interval: 30000,
+            enabled: !!user && !!savedPresentationId
+        }
+    );
 
     const updateSlide = <K extends keyof SlideState>(
         index: number,
@@ -113,6 +150,7 @@ export default function PresenterDashboard() {
                     type: s.type,
                     question: s.question,
                     options: s.type === "quiz" ? s.options : undefined,
+                    style: s.style,
                 })),
             };
 
@@ -154,15 +192,22 @@ export default function PresenterDashboard() {
 
         setLoading(true);
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const headers: HeadersInit = { "Content-Type": "application/json" };
+            if (session?.access_token) {
+                headers["Authorization"] = `Bearer ${session.access_token}`;
+            }
+
             const response = await fetch("/api/poll", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify({
-                    title: slides[0].question,
+                    title: saveTitle && saveTitle.trim() ? saveTitle : slides[0].question,
                     slides: slides.map((s) => ({
                         type: s.type,
                         question: s.question,
                         options: s.type === "quiz" ? s.options : undefined,
+                        style: s.style,
                     })),
                 }),
             });
@@ -186,15 +231,20 @@ export default function PresenterDashboard() {
             <div className="w-full max-w-2xl bg-white p-8 rounded-2xl shadow-xl border border-gray-100 max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between mb-8">
                     <h1 className="text-3xl font-bold text-gray-900">Create Your Poll</h1>
-                    {user && (
-                        <button
-                            onClick={() => setShowSaveModal(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
-                        >
-                            <Save className="w-4 h-4" />
-                            Save
-                        </button>
-                    )}
+                    <div className="flex items-center gap-4">
+                        {user && savedPresentationId && (
+                            <AutoSaveIndicator isSaving={isSaving} lastSaved={lastSaved} error={saveError} />
+                        )}
+                        {user && (
+                            <button
+                                onClick={() => setShowSaveModal(true)}
+                                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                            >
+                                <Save className="w-4 h-4" />
+                                {savedPresentationId ? "Save As..." : "Save"}
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 <div className="space-y-8">
@@ -245,6 +295,75 @@ export default function PresenterDashboard() {
                                         >
                                             Word Cloud
                                         </button>
+                                    </div>
+                                </div>
+
+                                {/* Style Selector */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Visualization Style</label>
+                                    <div className="flex gap-3">
+                                        {slide.type === "quiz" ? (
+                                            <>
+                                                <button
+                                                    onClick={() => updateSlide(sIndex, "style", "donut")}
+                                                    className={`p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${!slide.style || slide.style === "donut"
+                                                        ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-medium"
+                                                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                                        }`}
+                                                    title="Horizontal Bars (Default)"
+                                                >
+                                                    <LayoutTemplate className="w-5 h-5" />
+                                                    <span className="text-xs">Bars</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => updateSlide(sIndex, "style", "bar")}
+                                                    className={`p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${slide.style === "bar"
+                                                        ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-medium"
+                                                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                                        }`}
+                                                    title="Vertical Chart"
+                                                >
+                                                    <BarChart3 className="w-5 h-5" />
+                                                    <span className="text-xs">Chart</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => updateSlide(sIndex, "style", "pie")}
+                                                    className={`p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${slide.style === "pie"
+                                                        ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-medium"
+                                                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                                        }`}
+                                                    title="Pie Chart"
+                                                >
+                                                    <PieChart className="w-5 h-5" />
+                                                    <span className="text-xs">Pie</span>
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={() => updateSlide(sIndex, "style", "cloud")}
+                                                    className={`p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${!slide.style || slide.style === "cloud"
+                                                        ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-medium"
+                                                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                                        }`}
+                                                    title="Word Cloud"
+                                                >
+                                                    <MessageSquare className="w-5 h-5" />
+                                                    <span className="text-xs">Cloud</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => updateSlide(sIndex, "style", "bubble")}
+                                                    className={`p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${slide.style === "bubble"
+                                                        ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-medium"
+                                                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                                        }`}
+                                                    title="Bubble Layout"
+                                                >
+                                                    <LayoutTemplate className="w-5 h-5" />
+                                                    <span className="text-xs">Bubble</span>
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
 

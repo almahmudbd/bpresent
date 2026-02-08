@@ -23,6 +23,7 @@ export interface Slide {
     type: "quiz" | "word-cloud";
     question: string;
     order_index: number;
+    style?: string; // Visualization style: 'donut', 'bar', 'pie', 'cloud', 'bubble'
     created_at: string;
 }
 
@@ -60,6 +61,7 @@ export interface CreateSlideInput {
     type: "quiz" | "word-cloud";
     question: string;
     options?: string[]; // Only for quiz type
+    style?: string;
 }
 
 export interface VoteInput {

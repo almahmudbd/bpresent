@@ -4,16 +4,19 @@ import {
     createPoll,
     getPoll,
     updateActiveSlide,
+    updatePollStatus,
     deletePoll,
 } from "@/lib/services/poll.service";
 import { getVotedSlideIds } from "@/lib/services/voting.service";
 import { cookies } from "next/headers";
+import { supabase } from "@/lib/supabaseClient";
 
 // Validation schemas
 const createSlideSchema = z.object({
     type: z.enum(["quiz", "word-cloud"]),
     question: z.string().min(1, "Question is required"),
     options: z.array(z.string()).optional(),
+    style: z.string().optional(),
 });
 
 const createPollSchema = z.object({
@@ -21,9 +24,12 @@ const createPollSchema = z.object({
     slides: z.array(createSlideSchema).min(1, "At least one slide is required"),
 });
 
-const updateSlideSchema = z.object({
+const updatePollSchema = z.object({
     code: z.string().length(4, "Code must be 4 digits"),
-    slideId: z.string().uuid("Invalid slide ID"),
+    slideId: z.string().uuid("Invalid slide ID").optional(),
+    status: z.enum(["active", "completed", "expired"]).optional(),
+}).refine(data => data.slideId || data.status, {
+    message: "Either slideId or status must be provided"
 });
 
 /**
@@ -136,9 +142,35 @@ export async function PUT(req: Request) {
         const body = await req.json();
 
         // Validate input
-        const { code, slideId } = updateSlideSchema.parse(body);
+        const { code, slideId, status } = updatePollSchema.parse(body);
 
-        await updateActiveSlide(code, slideId);
+        // Check ownership
+        const poll = await getPoll(code);
+        if (!poll) {
+            return NextResponse.json({ error: "Poll not found" }, { status: 404 });
+        }
+
+        if (poll.presenter_id) {
+            let userId: string | undefined;
+            const authHeader = req.headers.get("authorization");
+            if (authHeader?.startsWith("Bearer ")) {
+                const token = authHeader.split("Bearer ")[1];
+                const { data: { user } } = await supabase.auth.getUser(token);
+                userId = user?.id;
+            }
+
+            if (!userId || userId !== poll.presenter_id) {
+                return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+            }
+        }
+
+        if (slideId) {
+            await updateActiveSlide(code, slideId);
+        }
+
+        if (status) {
+            await updatePollStatus(code, status as any);
+        }
 
         return NextResponse.json({ success: true });
     } catch (error) {
@@ -170,6 +202,26 @@ export async function DELETE(req: Request) {
                 { error: "Valid 4-digit code is required" },
                 { status: 400 }
             );
+        }
+
+        // Check ownership
+        const poll = await getPoll(code);
+        if (!poll) {
+            return NextResponse.json({ error: "Poll not found" }, { status: 404 });
+        }
+
+        if (poll.presenter_id) {
+            let userId: string | undefined;
+            const authHeader = req.headers.get("authorization");
+            if (authHeader?.startsWith("Bearer ")) {
+                const token = authHeader.split("Bearer ")[1];
+                const { data: { user } } = await supabase.auth.getUser(token);
+                userId = user?.id;
+            }
+
+            if (!userId || userId !== poll.presenter_id) {
+                return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+            }
         }
 
         await deletePoll(code);

@@ -1,7 +1,7 @@
 "use client";
 
 import { User } from "@supabase/supabase-js";
-import { LogOut, User as UserIcon, PresentationIcon } from "lucide-react";
+import { LogOut, User as UserIcon, PresentationIcon, Activity } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
@@ -53,6 +53,14 @@ export function UserMenu({ user }: UserMenuProps) {
                     >
                         <PresentationIcon className="w-4 h-4" />
                         My Presentations
+                    </Link>
+                    <Link
+                        href="/presenter/dashboard"
+                        onClick={() => setIsOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                        <Activity className="w-4 h-4" />
+                        Active Polls
                     </Link>
                     <button
                         onClick={handleSignOut}
