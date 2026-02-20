@@ -18,13 +18,20 @@ Your `.env` file is already configured with:
 - ✅ Supabase URL and keys
 - ✅ Redis Cloud endpoint and password
 
-### 3. Run Supabase Migration
-1. Go to https://supabase.com/dashboard
-2. Open your project
-3. Navigate to **SQL Editor**
-4. Copy the contents of `supabase/migrations/001_initial_schema.sql`
-5. Paste and click **Run**
-6. Verify no errors
+### 3. Initialize Database
+You have two options to setup your Supabase database:
+
+**Option A: Automated (Recommended)**
+```bash
+# Install tool and run
+npm install postgres dotenv
+node setup-db.mjs
+```
+
+**Option B: Manual**
+1. Go to your Supabase Dashboard -> **SQL Editor**
+2. Copy contents of `supabase/setup.sql`
+3. Paste and click **Run**
 
 ### 4. Start Development Server
 ```bash
