@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { ArrowLeft, Users, BarChart3, Trash2, Eye } from "lucide-react";
+import { ArrowLeft, Users, BarChart3, Trash2, Eye, ShieldCheck, Settings, Search } from "lucide-react";
 
 interface UserStat {
     id: string;
@@ -15,17 +15,31 @@ interface UserStat {
     presentation_count: number;
 }
 
+interface PollStat {
+    id: string;
+    code: string;
+    title: string;
+    status: string;
+    created_at: string;
+    slides: { count: number }[];
+}
+
 export default function AdminPage() {
     const router = useRouter();
+    const [activeTab, setActiveTab] = useState<"users" | "polls" | "admins">("users");
     const [users, setUsers] = useState<UserStat[]>([]);
+    const [polls, setPolls] = useState<PollStat[]>([]);
+    const [admins, setAdmins] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedUser, setSelectedUser] = useState<string | null>(null);
     const [userPolls, setUserPolls] = useState<any[]>([]);
     const [userPresentations, setUserPresentations] = useState<any[]>([]);
+    const [grantEmail, setGrantEmail] = useState("");
+    const [grantLoading, setGrantLoading] = useState(false);
 
     useEffect(() => {
         checkAdminAndLoadData();
-    }, []);
+    }, [activeTab]);
 
     const checkAdminAndLoadData = async () => {
         const { data: { session } } = await supabase.auth.getSession();
@@ -47,17 +61,17 @@ export default function AdminPage() {
             return;
         }
 
-        await loadUsers(session.access_token);
+        if (activeTab === "users") await loadUsers(session.access_token);
+        if (activeTab === "polls") await loadPolls(session.access_token);
+        if (activeTab === "admins") await loadAdmins();
     };
 
     const loadUsers = async (token: string) => {
+        setLoading(true);
         try {
             const response = await fetch("/api/admin/users", {
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                },
+                headers: { "Authorization": `Bearer ${token}` },
             });
-
             if (response.ok) {
                 const data = await response.json();
                 setUsers(data.users);
@@ -69,15 +83,40 @@ export default function AdminPage() {
         }
     };
 
+    const loadPolls = async (token: string) => {
+        setLoading(true);
+        try {
+            const response = await fetch("/api/admin/polls", {
+                headers: { "Authorization": `Bearer ${token}` },
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setPolls(data.polls);
+            }
+        } catch (error) {
+            console.error("Error loading polls:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadAdmins = async () => {
+        setLoading(true);
+        try {
+            const { data } = await supabase.from("admin_users").select("*").order("granted_at", { ascending: false });
+            setAdmins(data || []);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const viewUserData = async (userId: string) => {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
 
         try {
             const response = await fetch(`/api/admin/users/${userId}`, {
-                headers: {
-                    "Authorization": `Bearer ${session.access_token}`,
-                },
+                headers: { "Authorization": `Bearer ${session.access_token}` },
             });
 
             if (response.ok) {
@@ -91,169 +130,242 @@ export default function AdminPage() {
         }
     };
 
-    const deleteUser = async (userId: string) => {
-        if (!confirm("Are you sure you want to delete this user and all their data? This cannot be undone.")) {
-            return;
-        }
+    const handleGrantAdmin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!grantEmail) return;
 
+        setGrantLoading(true);
+        try {
+            const { error } = await supabase.rpc("grant_admin_access", { user_email: grantEmail });
+            if (error) throw error;
+            alert(`Admin access granted to ${grantEmail}`);
+            setGrantEmail("");
+            loadAdmins();
+        } catch (error: any) {
+            alert(`Error: ${error.message || String(error)}`);
+        } finally {
+            setGrantLoading(false);
+        }
+    };
+
+    const deleteUser = async (userId: string) => {
+        if (!confirm("Are you sure you want to delete this user and all their data? This cannot be undone.")) return;
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
-
         try {
             const response = await fetch(`/api/admin/users/${userId}`, {
                 method: "DELETE",
-                headers: {
-                    "Authorization": `Bearer ${session.access_token}`,
-                },
+                headers: { "Authorization": `Bearer ${session.access_token}` },
             });
-
             if (response.ok) {
                 setUsers(users.filter(u => u.id !== userId));
                 setSelectedUser(null);
                 alert("User deleted successfully");
-            } else {
-                const error = await response.json();
-                alert(`Error: ${error.error}`);
             }
         } catch (error) {
-            console.error("Error deleting user:", error);
             alert("Failed to delete user");
         }
     };
 
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
-                <div className="text-gray-500">Loading...</div>
-            </div>
-        );
-    }
+    const archivePoll = async (code: string) => {
+        if (!confirm("Archive this poll? Voters will no longer be able to join.")) return;
+        const { error } = await supabase.from("polls").update({ archived_at: new Date().toISOString(), status: 'expired' }).eq("code", code);
+        if (error) alert(error.message);
+        else loadPolls((await supabase.auth.getSession()).data.session?.access_token || "");
+    };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6">
+        <div className="min-h-screen bg-slate-50 p-6">
             <div className="max-w-7xl mx-auto">
-                <div className="flex items-center justify-between mb-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                     <div>
-                        <Link
-                            href="/"
-                            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
-                        >
-                            <ArrowLeft className="w-4 h-4" />
-                            Back to Home
+                        <Link href="/" className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-indigo-600 mb-4 transition-colors">
+                            <ArrowLeft className="w-4 h-4" /> Back to Home
                         </Link>
-                        <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-                        <p className="text-gray-600 mt-1">System Administration</p>
+                        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Admin Console</h1>
+                        <p className="text-slate-500 mt-1">Manage users, polls, and system access</p>
                     </div>
-                    <div className="text-sm text-gray-500">
-                        {users.length} total users
+
+                    <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200">
+                        {["users", "polls", "admins"].map((tab) => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab as any)}
+                                className={`px-5 py-2 rounded-lg text-sm font-medium capitalize transition-all ${activeTab === tab ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 hover:bg-slate-50"
+                                    }`}
+                            >
+                                {tab}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Users List */}
-                    <div className="bg-white rounded-xl border border-gray-100 p-6">
-                        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                            <Users className="w-5 h-5" />
-                            All Users
-                        </h2>
-                        <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                            {users.map((user) => (
-                                <div
-                                    key={user.id}
-                                    className={`p-4 rounded-lg border transition-all ${selectedUser === user.id
-                                            ? "border-indigo-500 bg-indigo-50"
-                                            : "border-gray-100 hover:border-gray-300"
-                                        }`}
-                                >
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-1">
-                                            <p className="font-medium text-gray-900">{user.email}</p>
-                                            <div className="text-xs text-gray-500 space-y-1 mt-1">
-                                                <p>Joined: {new Date(user.created_at).toLocaleDateString()}</p>
-                                                {user.last_sign_in_at && (
-                                                    <p>Last login: {new Date(user.last_sign_in_at).toLocaleDateString()}</p>
-                                                )}
-                                                <div className="flex gap-3 mt-2">
-                                                    <span className="inline-flex items-center gap-1">
-                                                        <BarChart3 className="w-3 h-3" /> {user.poll_count} polls
-                                                    </span>
-                                                    <span className="inline-flex items-center gap-1">
-                                                        📊 {user.presentation_count} templates
-                                                    </span>
+                {loading ? (
+                    <div className="flex items-center justify-center py-20">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Main Content Area */}
+                        <div className="lg:col-span-2 space-y-6">
+                            {activeTab === "users" && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                                    <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                                        <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+                                            <Users className="w-5 h-5 text-indigo-500" /> Users ({users.length})
+                                        </h2>
+                                        <div className="relative">
+                                            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                            <input type="text" placeholder="Search email..." className="pl-9 pr-4 py-1.5 text-sm border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none w-64" />
+                                        </div>
+                                    </div>
+                                    <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
+                                        {users.map((user) => (
+                                            <div key={user.id} className={`p-4 flex items-center justify-between hover:bg-slate-50 transition-colors ${selectedUser === user.id ? "bg-indigo-50/50" : ""}`}>
+                                                <div>
+                                                    <p className="font-medium text-slate-900">{user.email}</p>
+                                                    <div className="flex gap-4 text-xs text-slate-500 mt-1">
+                                                        <span>{user.poll_count} Polls</span>
+                                                        <span>{user.presentation_count} Templates</span>
+                                                        <span>Joined: {new Date(user.created_at).toLocaleDateString()}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => viewUserData(user.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all">
+                                                        <Eye className="w-4 h-4" />
+                                                    </button>
+                                                    <button onClick={() => deleteUser(user.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
                                                 </div>
                                             </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === "polls" && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                                    <div className="p-5 border-b border-slate-100 bg-slate-50/50">
+                                        <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+                                            <BarChart3 className="w-5 h-5 text-indigo-500" /> Global Polls ({polls.length})
+                                        </h2>
+                                    </div>
+                                    <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
+                                        {polls.map((poll) => (
+                                            <div key={poll.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                                                <div>
+                                                    <h3 className="font-medium text-slate-900">{poll.title || "Untitled Poll"}</h3>
+                                                    <div className="flex gap-3 text-xs text-slate-500 mt-1">
+                                                        <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">{poll.code}</span>
+                                                        <span>{poll.status}</span>
+                                                        <span>{new Date(poll.created_at).toLocaleDateString()}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => archivePoll(poll.code)} className="px-3 py-1.5 text-xs font-medium text-amber-600 hover:bg-amber-50 rounded-lg border border-amber-200">
+                                                        Archive
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === "admins" && (
+                                <div className="space-y-6">
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                                        <h2 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
+                                            <ShieldCheck className="w-5 h-5 text-indigo-500" /> Add New Admin
+                                        </h2>
+                                        <form onSubmit={handleGrantAdmin} className="flex gap-2">
+                                            <input
+                                                type="email"
+                                                value={grantEmail}
+                                                onChange={(e) => setGrantEmail(e.target.value)}
+                                                placeholder="Enter email address..."
+                                                className="flex-1 px-4 py-2 border-slate-200 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                required
+                                            />
+                                            <button
+                                                disabled={grantLoading}
+                                                className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                                            >
+                                                {grantLoading ? "Granting..." : "Grant Access"}
+                                            </button>
+                                        </form>
+                                    </div>
+
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                                        <div className="p-5 border-b border-slate-100 bg-slate-50/50">
+                                            <h2 className="font-semibold text-slate-800">System Admins</h2>
                                         </div>
-                                        <div className="flex gap-2 ml-4">
-                                            <button
-                                                onClick={() => viewUserData(user.id)}
-                                                className="p-2 hover:bg-indigo-100 rounded-lg transition-colors"
-                                                title="View data"
-                                            >
-                                                <Eye className="w-4 h-4 text-indigo-600" />
-                                            </button>
-                                            <button
-                                                onClick={() => deleteUser(user.id)}
-                                                className="p-2 hover:bg-red-100 rounded-lg transition-colors"
-                                                title="Delete user"
-                                            >
-                                                <Trash2 className="w-4 h-4 text-red-600" />
-                                            </button>
+                                        <div className="divide-y divide-slate-100">
+                                            {admins.map((admin) => (
+                                                <div key={admin.id} className="p-4 flex items-center justify-between">
+                                                    <div>
+                                                        <p className="font-medium text-slate-900">{admin.email}</p>
+                                                        <p className="text-xs text-slate-500">Granted at: {new Date(admin.granted_at).toLocaleString()}</p>
+                                                    </div>
+                                                    <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-[10px] uppercase font-bold tracking-wider border border-indigo-100">
+                                                        FULL ADMIN
+                                                    </span>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
-                            ))}
+                            )}
+                        </div>
+
+                        {/* Sidebar / Details Area */}
+                        <div className="space-y-6">
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                                <h2 className="font-semibold text-slate-800 flex items-center gap-2 mb-6">
+                                    <Settings className="w-5 h-5 text-slate-400" /> User Details
+                                </h2>
+
+                                {selectedUser ? (
+                                    <div className="space-y-6">
+                                        <div>
+                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Recent Polls</h3>
+                                            <div className="space-y-2">
+                                                {userPolls.slice(0, 5).map(p => (
+                                                    <div key={p.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                                        <p className="text-sm font-medium text-slate-800 truncate">{p.title || p.code}</p>
+                                                        <p className="text-[10px] text-slate-500 mt-1">{new Date(p.created_at).toLocaleDateString()} • {p.status}</p>
+                                                    </div>
+                                                ))}
+                                                {userPolls.length === 0 && <p className="text-sm text-slate-400 italic">No polls found.</p>}
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Templates</h3>
+                                            <div className="space-y-2">
+                                                {userPresentations.slice(0, 5).map(pr => (
+                                                    <div key={pr.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                                        <p className="text-sm font-medium text-slate-800 truncate">{pr.title}</p>
+                                                        <p className="text-[10px] text-slate-500 mt-1">Saved on {new Date(pr.created_at).toLocaleDateString()}</p>
+                                                    </div>
+                                                ))}
+                                                {userPresentations.length === 0 && <p className="text-sm text-slate-400 italic">No templates found.</p>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-12">
+                                        <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                                            <Eye className="w-6 h-6" />
+                                        </div>
+                                        <p className="text-sm text-slate-400">Select a user to explore their content and activity</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-
-                    {/* User Details */}
-                    <div className="bg-white rounded-xl border border-gray-100 p-6">
-                        <h2 className="text-xl font-semibold mb-4">User Details</h2>
-                        {selectedUser ? (
-                            <div className="space-y-4 max-h-[600px] overflow-y-auto">
-                                <div>
-                                    <h3 className="font-medium text-gray-900 mb-2">Polls ({userPolls.length})</h3>
-                                    <div className="space-y-2">
-                                        {userPolls.map((poll) => (
-                                            <div key={poll.id} className="p-3 bg-gray-50 rounded-lg text-sm">
-                                                <p className="font-medium">Poll ID: {poll.id}</p>
-                                                <p className="text-gray-600">Status: {poll.status}</p>
-                                                <p className="text-gray-600">
-                                                    Created: {new Date(poll.created_at).toLocaleString()}
-                                                </p>
-                                            </div>
-                                        ))}
-                                        {userPolls.length === 0 && (
-                                            <p className="text-gray-500 text-sm">No polls</p>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <h3 className="font-medium text-gray-900 mb-2">
-                                        Templates ({userPresentations.length})
-                                    </h3>
-                                    <div className="space-y-2">
-                                        {userPresentations.map((pres) => (
-                                            <div key={pres.id} className="p-3 bg-gray-50 rounded-lg text-sm">
-                                                <p className="font-medium">{pres.title}</p>
-                                                <p className="text-gray-600">
-                                                    Updated: {new Date(pres.updated_at).toLocaleString()}
-                                                </p>
-                                            </div>
-                                        ))}
-                                        {userPresentations.length === 0 && (
-                                            <p className="text-gray-500 text-sm">No templates</p>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <p className="text-gray-500 text-center py-12">
-                                Select a user to view their data
-                            </p>
-                        )}
-                    </div>
-                </div>
+                )}
             </div>
         </div>
     );

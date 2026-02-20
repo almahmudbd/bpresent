@@ -10,12 +10,22 @@ export async function trackParticipant(
     slideId: string,
     sessionId: string
 ): Promise<void> {
-    const key = `poll:${code}:slide:${slideId}:participants`;
-    await redis.sadd(key, sessionId);
+    if (redis.enabled) {
+        const key = `poll:${code}:slide:${slideId}:participants`;
+        await redis.sadd(key, sessionId);
 
-    // Set TTL to match poll TTL
-    const pollTTL = parseInt(process.env.POLL_TTL_HOURS || "24") * 3600;
-    await redis.expire(key, pollTTL);
+        // Set TTL to match poll TTL
+        const pollTTL = parseInt(process.env.POLL_TTL_HOURS || "24") * 3600;
+        await redis.expire(key, pollTTL);
+    } else {
+        // Fallback to Supabase
+        await supabase
+            .from("participants")
+            .upsert(
+                { poll_code: code, slide_id: slideId, session_id: sessionId, last_seen: new Date().toISOString() },
+                { onConflict: 'poll_code,slide_id,session_id' }
+            );
+    }
 }
 
 /**
@@ -25,9 +35,19 @@ export async function getParticipantCount(
     code: string,
     slideId: string
 ): Promise<number> {
-    const key = `poll:${code}:slide:${slideId}:participants`;
-    const count = await redis.scard(key);
-    return count || 0;
+    if (redis.enabled) {
+        const key = `poll:${code}:slide:${slideId}:participants`;
+        const count = await redis.scard(key);
+        return (count as number) || 0;
+    } else {
+        // Fallback to Supabase
+        const { count, error } = await supabase
+            .from("participants")
+            .select('*', { count: 'exact', head: true })
+            .eq("slide_id", slideId);
+
+        return count || 0;
+    }
 }
 
 /**
@@ -38,9 +58,20 @@ async function hasVoted(
     slideId: string,
     sessionId: string
 ): Promise<boolean> {
-    const key = `poll:${code}:slide:${slideId}:voters`;
-    const isMember = await redis.sismember(key, sessionId);
-    return isMember === 1;
+    if (redis.enabled) {
+        const key = `poll:${code}:slide:${slideId}:voters`;
+        const isMember = await redis.sismember(key, sessionId);
+        return isMember === 1 || isMember === true;
+    } else {
+        // Fallback to Supabase - check votes table
+        const { count, error } = await supabase
+            .from("votes")
+            .select('*', { count: 'exact', head: true })
+            .eq("slide_id", slideId)
+            .eq("voter_session_id", sessionId);
+
+        return (count || 0) > 0;
+    }
 }
 
 /**
@@ -51,11 +82,14 @@ async function markAsVoted(
     slideId: string,
     sessionId: string
 ): Promise<void> {
-    const key = `poll:${code}:slide:${slideId}:voters`;
-    await redis.sadd(key, sessionId);
+    if (redis.enabled) {
+        const key = `poll:${code}:slide:${slideId}:voters`;
+        await redis.sadd(key, sessionId);
 
-    const pollTTL = parseInt(process.env.POLL_TTL_HOURS || "24") * 3600;
-    await redis.expire(key, pollTTL);
+        const pollTTL = parseInt(process.env.POLL_TTL_HOURS || "24") * 3600;
+        await redis.expire(key, pollTTL);
+    }
+    // No fallback needed for markAsVoted because hasVoted checks the votes table which is updated anyway
 }
 
 /**
@@ -92,7 +126,14 @@ export async function submitVote(input: VoteInput): Promise<void> {
         throw new Error(`Failed to submit vote: ${error.message}`);
     }
 
-    // Mark as voted
+    // Record the vote in Supabase (this handles the persistence)
+    await supabase.from("votes").insert({
+        slide_id: optionData.slide_id,
+        option_id: input.option_id,
+        voter_session_id: input.session_id
+    });
+
+    // Mark as voted (Redis update)
     await markAsVoted(input.code, optionData.slide_id, input.session_id);
 
     // Track participant
@@ -138,24 +179,36 @@ export async function submitWordCloudVote(input: VoteInput): Promise<void> {
         (o) => o.text.toLowerCase() === normalizedText
     );
 
+    let optionId;
+
     if (existingOption) {
+        optionId = existingOption.id;
         // Increment existing option
         await supabase.rpc("vote_for_option", {
             option_id: existingOption.id,
         });
     } else {
         // Create new option
-        const { error } = await supabase.from("options").insert({
+        const { data: newOption, error } = await supabase.from("options").insert({
             slide_id: slideId,
             text: input.text.trim(),
             vote_count: 1,
             color: "#" + Math.floor(Math.random() * 16777215).toString(16),
-        });
+        }).select().single();
 
         if (error) {
             throw new Error(`Failed to create option: ${error.message}`);
         }
+        optionId = newOption.id;
     }
+
+    // Record the vote in Supabase
+    await supabase.from("votes").insert({
+        slide_id: slideId,
+        option_id: optionId,
+        voter_session_id: input.session_id,
+        word_text: input.text.trim()
+    });
 
     // Mark as voted
     await markAsVoted(input.code, slideId, input.session_id);
@@ -213,15 +266,27 @@ export async function getVotedSlideIds(
     slideIds: string[],
     sessionId: string
 ): Promise<string[]> {
-    const checks = slideIds.map(async (slideId) => {
-        const key = `poll:${code}:slide:${slideId}:voters`;
-        const isMember = await redis.sismember(key, sessionId);
-        return { slideId, isMember: isMember === 1 };
-    });
+    if (redis.enabled) {
+        const checks = slideIds.map(async (slideId) => {
+            const key = `poll:${code}:slide:${slideId}:voters`;
+            const isMember = await redis.sismember(key, sessionId);
+            return { slideId, isMember: isMember === 1 || isMember === true };
+        });
 
-    const results = await Promise.all(checks);
+        const results = await Promise.all(checks);
 
-    return results
-        .filter(r => r.isMember)
-        .map(r => r.slideId);
+        return results
+            .filter(r => r.isMember)
+            .map(r => r.slideId);
+    } else {
+        // Fallback to Supabase
+        const { data: votes, error } = await supabase
+            .from("votes")
+            .select("slide_id")
+            .eq("voter_session_id", sessionId)
+            .in("slide_id", slideIds);
+
+        if (error || !votes) return [];
+        return votes.map(v => v.slide_id);
+    }
 }

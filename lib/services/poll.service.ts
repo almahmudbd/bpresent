@@ -24,10 +24,22 @@ async function generatePollCode(): Promise<string> {
     for (let attempts = 0; attempts < 10; attempts++) {
         const code = Math.floor(min + Math.random() * (max - min + 1)).toString();
 
-        // Check if code exists in Redis
-        const exists = await redis.exists(`poll:${code}`);
-        if (!exists) {
-            return code;
+        if (redis.enabled) {
+            // Check if code exists in Redis
+            const exists = await redis.exists(`poll:${code}`);
+            if (!exists) {
+                return code;
+            }
+        } else {
+            // Fallback to Supabase check
+            const { count } = await supabase
+                .from("polls")
+                .select("*", { count: 'exact', head: true })
+                .eq("code", code);
+
+            if (!count || count === 0) {
+                return code;
+            }
         }
     }
 
@@ -121,32 +133,34 @@ export async function createPoll(
         .update({ active_slide_id: firstSlideId })
         .eq("id", pollData.id);
 
-    // 5. Store in Redis for fast access
-    const redisPoll: RedisPoll = {
-        id: pollData.id,
-        code,
-        title: pollData.title,
-        presenter_id: presenterId,
-        active_slide_id: firstSlideId,
-        created_at: pollData.created_at,
-    };
+    // 5. Store in Redis for fast access (if enabled)
+    if (redis.enabled) {
+        const redisPoll: RedisPoll = {
+            id: pollData.id,
+            code,
+            title: pollData.title,
+            presenter_id: presenterId,
+            active_slide_id: firstSlideId,
+            created_at: pollData.created_at,
+        };
 
-    // Store poll metadata
-    await redis.hset(`poll:${code}`, { ...redisPoll });
-    await redis.expire(`poll:${code}`, POLL_TTL_HOURS * 3600);
+        // Store poll metadata
+        await redis.hset(`poll:${code}`, { ...redisPoll });
+        await redis.expire(`poll:${code}`, POLL_TTL_HOURS * 3600);
 
-    // Store slides data
-    const redisSlides: RedisSlide[] = insertedSlides.map((slide) => ({
-        id: slide.id,
-        poll_id: slide.poll_id,
-        type: slide.type,
-        question: slide.question,
-        order_index: slide.order_index,
-        options: [], // Will be populated when fetching
-    }));
+        // Store slides data
+        const redisSlides: RedisSlide[] = insertedSlides.map((slide) => ({
+            id: slide.id,
+            poll_id: slide.poll_id,
+            type: slide.type,
+            question: slide.question,
+            order_index: slide.order_index,
+            options: [], // Will be populated when fetching
+        }));
 
-    await redis.set(`poll:${code}:slides`, JSON.stringify(redisSlides));
-    await redis.expire(`poll:${code}:slides`, POLL_TTL_HOURS * 3600);
+        await redis.set(`poll:${code}:slides`, JSON.stringify(redisSlides));
+        await redis.expire(`poll:${code}:slides`, POLL_TTL_HOURS * 3600);
+    }
 
     return {
         poll: { ...pollData, active_slide_id: firstSlideId },
@@ -158,58 +172,60 @@ export async function createPoll(
  * Get poll data from Redis (fast) or Supabase (fallback)
  */
 export async function getPoll(code: string): Promise<PollWithSlides | null> {
-    // Try Redis first
-    const redisPoll = await redis.hgetall(`poll:${code}`);
+    // Try Redis first if enabled
+    if (redis.enabled) {
+        const redisPoll = await redis.hgetall(`poll:${code}`);
 
-    if (redisPoll && Object.keys(redisPoll).length > 0) {
-        // Poll exists in Redis, fetch from Supabase for complete data
-        const { data: pollData } = await supabase
-            .from("polls")
-            .select("*")
-            .eq("code", code)
-            .single();
-
-        if (!pollData) return null;
-
-        // Check for expiration (Lazy Expiry)
-        if (pollData.status === 'active' && pollData.expires_at && new Date(pollData.expires_at) < new Date()) {
-            await supabase
+        if (redisPoll && Object.keys(redisPoll).length > 0) {
+            // Poll exists in Redis, fetch from Supabase for complete data
+            const { data: pollData } = await supabase
                 .from("polls")
-                .update({ status: 'expired' })
-                .eq("id", pollData.id);
+                .select("*")
+                .eq("code", code)
+                .single();
 
-            await redis.hset(`poll:${code}`, { status: 'expired' });
-            pollData.status = 'expired';
+            if (!pollData) return null;
+
+            // Check for expiration (Lazy Expiry)
+            if (pollData.status === 'active' && pollData.expires_at && new Date(pollData.expires_at) < new Date()) {
+                await supabase
+                    .from("polls")
+                    .update({ status: 'expired' })
+                    .eq("id", pollData.id);
+
+                await redis.hset(`poll:${code}`, { status: 'expired' });
+                pollData.status = 'expired';
+            }
+
+            // Fetch slides with options
+            const { data: slidesData } = await supabase
+                .from("slides")
+                .select("*")
+                .eq("poll_id", pollData.id)
+                .order("order_index", { ascending: true });
+
+            if (!slidesData) return null;
+
+            // Fetch all options
+            const slideIds = slidesData.map((s) => s.id);
+            const { data: optionsData } = await supabase
+                .from("options")
+                .select("*")
+                .in("slide_id", slideIds);
+
+            const slidesWithOptions: SlideWithOptions[] = slidesData.map((slide) => ({
+                ...slide,
+                options: optionsData?.filter((o) => o.slide_id === slide.id) || [],
+            }));
+
+            return {
+                ...pollData,
+                slides: slidesWithOptions,
+            };
         }
-
-        // Fetch slides with options
-        const { data: slidesData } = await supabase
-            .from("slides")
-            .select("*")
-            .eq("poll_id", pollData.id)
-            .order("order_index", { ascending: true });
-
-        if (!slidesData) return null;
-
-        // Fetch all options
-        const slideIds = slidesData.map((s) => s.id);
-        const { data: optionsData } = await supabase
-            .from("options")
-            .select("*")
-            .in("slide_id", slideIds);
-
-        const slidesWithOptions: SlideWithOptions[] = slidesData.map((slide) => ({
-            ...slide,
-            options: optionsData?.filter((o) => o.slide_id === slide.id) || [],
-        }));
-
-        return {
-            ...pollData,
-            slides: slidesWithOptions,
-        };
     }
 
-    // Poll not in Redis, check Supabase
+    // Poll not in Redis or Redis disabled, check Supabase
     const { data: pollData } = await supabase
         .from("polls")
         .select("*")
@@ -226,7 +242,9 @@ export async function getPoll(code: string): Promise<PollWithSlides | null> {
             .update({ status: 'expired' })
             .eq("id", pollData.id);
 
-        await redis.hset(`poll:${code}`, { status: 'expired' });
+        if (redis.enabled) {
+            await redis.hset(`poll:${code}`, { status: 'expired' });
+        }
         pollData.status = 'expired';
     }
 
@@ -279,8 +297,10 @@ export async function updateActiveSlide(
         .update({ active_slide_id: slideId })
         .eq("id", pollData.id);
 
-    // Update in Redis
-    await redis.hset(`poll:${code}`, { active_slide_id: slideId });
+    // Update in Redis if enabled
+    if (redis.enabled) {
+        await redis.hset(`poll:${code}`, { active_slide_id: slideId });
+    }
 }
 
 /**
@@ -311,8 +331,10 @@ export async function updatePollStatus(
         .update(updates)
         .eq("id", pollData.id);
 
-    // Update in Redis
-    await redis.hset(`poll:${code}`, { status });
+    // Update in Redis if enabled
+    if (redis.enabled) {
+        await redis.hset(`poll:${code}`, { status });
+    }
 }
 
 /**
@@ -335,9 +357,11 @@ export async function archivePoll(code: string): Promise<void> {
         .update({ archived_at: new Date().toISOString() })
         .eq("id", pollData.id);
 
-    // Remove from Redis
-    await redis.del(`poll:${code}`);
-    await redis.del(`poll:${code}:slides`);
+    // Remove from Redis if enabled
+    if (redis.enabled) {
+        await redis.del(`poll:${code}`);
+        await redis.del(`poll:${code}:slides`);
+    }
 }
 
 /**
@@ -357,9 +381,11 @@ export async function deletePoll(code: string): Promise<void> {
     // Delete from Supabase (cascades to slides, options, votes)
     await supabase.from("polls").delete().eq("id", pollData.id);
 
-    // Remove from Redis
-    await redis.del(`poll:${code}`);
-    await redis.del(`poll:${code}:slides`);
+    // Remove from Redis if enabled
+    if (redis.enabled) {
+        await redis.del(`poll:${code}`);
+        await redis.del(`poll:${code}:slides`);
+    }
 }
 
 /**
@@ -442,39 +468,10 @@ export async function addSlideToPoll(
         options: insertedOptions,
     };
 
-    // 5. Update Redis
-    // To keep it simple, we can just invalidate the slides cache or append to it.
-    // Invalidating is safer to avoid race conditions, but appending is faster.
-    // Since we fetch the whole list often, let's just invalidate/delete the slides key
-    // so next fetch gets fresh data.
-    // Actually, `getPoll` tries Redis first. If we delete `poll:${code}:slides`, `getPoll` checks `poll:${code}` (exists), then fetches slides from key.
-    // If key is missing? `getPoll` doesn't handle "poll exists but slides missing" logic well in the provided code!
-    // It checks `redisPoll` exists. If so, it assumes it has data?
-    // Wait, `getPoll` checks `redisPoll`. If it exists, it fetches slides from `slides` table in Supabase!
-    // Line 163: `// Poll exists in Redis, fetch from Supabase for complete data`
-    // Wait, `getPoll` implementation I see in `poll.service.ts`:
-    // It fetches from Supabase if Redis has the poll key!
-    // So modifying Supabase is enough for `getPoll` to see it?
-    // NO. Line 164: Fetches `polls` from Supabase.
-    // Line 173: Fetches `slides` from Supabase.
-    // So actually, `getPoll` IGNORES `redisPoll` content and just uses it as a "exists" check?
-    // And it doesn't seem to use `poll:${code}:slides`?
-    // Wait, let's look at `createPoll`:
-    // It sets `poll:${code}:slides`.
-    // But `getPoll` doesn't seem to READ `poll:${code}:slides`?
-    // Line 160: `redis.hgetall` for poll.
-    // Line 162: `if (redisPoll ...)`
-    // Line 164: `supabase.from("polls")...`
-    // It seems `getPoll` implementation is: "If in Redis, fetch from DB". This is weird caching strategy (Cache Look-aside without read-through from cache?).
-    // Actually, maybe the provided code snippet for `getPoll` was incomplete or I misread it.
-    // "Poll exists in Redis, fetch from Supabase for complete data" -> this comment implies it fetches from Supabase.
-    // So I don't need to update Redis slides key if `getPoll` always hits DB?
-    // But `createPoll` writes to it.
-    // If there is another function `getSlides` that uses Redis, I should update it.
-    // But based on `getPoll` I see, it hits DB. So I'm safe.
-    // However, to be safe, I'll delete `poll:${code}:slides` anyway.
-
-    await redis.del(`poll:${code}:slides`);
+    // 5. Update Redis if enabled
+    if (redis.enabled) {
+        await redis.del(`poll:${code}:slides`);
+    }
 
     return slideWithOptions;
 }
