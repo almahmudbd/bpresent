@@ -48,25 +48,9 @@ If you prefer manual setup, follow these steps:
 3. **Database Initialization (Tables & Structure):**
    Follow these steps in the Supabase **SQL Editor** to create the necessary tables and structure:
    
-   - **Step 1: Run Basic Tables**
-     Copy and run the content of `supabase/test_migration_step1.sql`.
-     *This creates: polls, slides, options, votes, saved_presentations, and admin_users.*
-   
-   - **Step 2: Run Indexes & Functions**
-     Copy and run the content of `supabase/test_migration_step2.sql`.
-     *This adds performance indexes and required functions (e.g., admin check, cleanup).*
-   
-   - **Step 3: Run RLS Policies**
-     Copy and run the content of `supabase/test_migration_step3.sql`.
-     *This sets up Row Level Security to protect your data.*
-
-   - **Step 4: Missing Functions & Realtime**
-     Copy and run the content of `supabase/test_migration_step4.sql`.
-     *This adds missing functions (like vote_for_option) and enables Supabase Realtime for the tables.*
-
-   - **Step 5: Participants Tracking (Required if not using Redis)**
-     Copy and run the content of `supabase/test_migration_step5.sql`.
-     *This creates the table needed to track live participants when Redis is disabled.*
+   - **Run Setup Script**
+     Copy and run the content of `supabase/setup.sql` in the Supabase SQL Editor.
+     *This script creates all tables, indexes, functions, and RLS policies in one go.*
 
 ---
 

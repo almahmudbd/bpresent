@@ -24,11 +24,7 @@ async function runMigration() {
     console.log('🚀 Starting Database Migration...');
 
     const migrationFiles = [
-        'supabase/test_migration_step1.sql',
-        'supabase/test_migration_step2.sql',
-        'supabase/test_migration_step3.sql',
-        'supabase/test_migration_step4.sql',
-        'supabase/test_migration_step5.sql'
+        'supabase/setup.sql'
     ];
 
     for (const file of migrationFiles) {
