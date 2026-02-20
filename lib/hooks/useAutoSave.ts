@@ -38,7 +38,7 @@ export function useAutoSave<T>(
     });
 
     const dataRef = useRef(data);
-    const timeoutRef = useRef<NodeJS.Timeout>();
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
     const hasChangesRef = useRef(false);
 
     // Update data ref when data changes
