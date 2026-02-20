@@ -26,10 +26,11 @@ interface PollStat {
 
 export default function AdminPage() {
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState<"users" | "polls" | "admins">("users");
+    const [activeTab, setActiveTab] = useState<"users" | "polls" | "admins" | "system">("users");
     const [users, setUsers] = useState<UserStat[]>([]);
     const [polls, setPolls] = useState<PollStat[]>([]);
     const [admins, setAdmins] = useState<any[]>([]);
+    const [systemInfo, setSystemInfo] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [selectedUser, setSelectedUser] = useState<string | null>(null);
     const [userPolls, setUserPolls] = useState<any[]>([]);
@@ -64,6 +65,45 @@ export default function AdminPage() {
         if (activeTab === "users") await loadUsers(session.access_token);
         if (activeTab === "polls") await loadPolls(session.access_token);
         if (activeTab === "admins") await loadAdmins();
+        if (activeTab === "system") await loadSystemInfo();
+    };
+
+    const loadSystemInfo = async () => {
+        setLoading(true);
+        try {
+            const response = await fetch("/api/admin/system");
+            if (response.ok) {
+                const data = await response.json();
+                setSystemInfo(data);
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const runCleanup = async (action: string) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        setLoading(true);
+        try {
+            const response = await fetch("/api/admin/system", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${session.access_token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ action })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                alert(data.message + (data.deleted !== undefined ? ` (Count: ${data.deleted})` : data.expired !== undefined ? ` (Count: ${data.expired})` : ""));
+            } else {
+                alert("Error: " + data.error);
+            }
+        } finally {
+            setLoading(false);
+        }
     };
 
     const loadUsers = async (token: string) => {
@@ -187,7 +227,7 @@ export default function AdminPage() {
                     </div>
 
                     <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200">
-                        {["users", "polls", "admins"].map((tab) => (
+                        {["users", "polls", "admins", "system"].map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab as any)}
@@ -313,6 +353,54 @@ export default function AdminPage() {
                                                     </span>
                                                 </div>
                                             ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === "system" && systemInfo && (
+                                <div className="space-y-6">
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                                        <h2 className="font-semibold text-slate-800 flex items-center gap-2 mb-6">
+                                            <Settings className="w-5 h-5 text-indigo-500" /> System Maintenance
+                                        </h2>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50">
+                                                <h3 className="text-sm font-bold text-slate-800 mb-1">Database Cleanup</h3>
+                                                <p className="text-xs text-slate-500 mb-4">Remove expired polls and dangling data to save space.</p>
+                                                <div className="space-y-2">
+                                                    <button onClick={() => runCleanup('cleanup_anonymous')} className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 transition-all">
+                                                        Clear Anonymous Polls (3h+)
+                                                    </button>
+                                                    <button onClick={() => runCleanup('expire_authenticated')} className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 transition-all">
+                                                        Expire Auth Polls (24h+)
+                                                    </button>
+                                                    <button onClick={() => runCleanup('cleanup_old')} className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 transition-all">
+                                                        Wipe Old Expired Polls (30d+)
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50">
+                                                <h3 className="text-sm font-bold text-slate-800 mb-1">System Info</h3>
+                                                <div className="space-y-3 mt-4">
+                                                    <div className="flex justify-between items-center text-xs">
+                                                        <span className="text-slate-500">Redis Status</span>
+                                                        <span className={`font-bold ${systemInfo.redis_enabled ? "text-emerald-600" : "text-red-500"}`}>
+                                                            {systemInfo.redis_enabled ? "ENABLED" : "DISABLED"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-xs">
+                                                        <span className="text-slate-500">Node Version</span>
+                                                        <span className="text-slate-700 font-mono">{systemInfo.node_version}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-xs">
+                                                        <span className="text-slate-500">Environment</span>
+                                                        <span className="text-slate-700 uppercase">{systemInfo.environment}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

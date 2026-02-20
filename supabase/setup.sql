@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS participants (
   UNIQUE(poll_code, slide_id, session_id)
 );
 
+ALTER TABLE polls ADD CONSTRAINT polls_status_check CHECK (status IN ('active', 'completed', 'expired', 'deleted'));
+ALTER TABLE slides ADD CONSTRAINT slides_style_check CHECK (style IN ('donut', 'bar', 'pie', 'cloud', 'bubble'));
+
 CREATE INDEX IF NOT EXISTS idx_polls_code ON polls(code);
 CREATE INDEX IF NOT EXISTS idx_polls_status ON polls(status);
 CREATE INDEX IF NOT EXISTS idx_polls_user_status ON polls(user_id, status, created_at DESC);
@@ -109,6 +112,37 @@ BEGIN
     WITH deleted_polls AS (
         DELETE FROM polls 
         WHERE expires_at < NOW() AND status = 'active' AND user_id IS NULL
+        RETURNING id
+    )
+    SELECT COUNT(*)::INTEGER INTO poll_count FROM deleted_polls;
+    RETURN QUERY SELECT poll_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION expire_authenticated_polls()
+RETURNS TABLE(expired_count INTEGER) AS $$
+DECLARE
+    poll_count INTEGER;
+BEGIN
+    WITH updated_polls AS (
+        UPDATE polls 
+        SET status = 'expired', can_clone_until = NOW() + INTERVAL '1 month'
+        WHERE expires_at < NOW() AND status = 'active' AND user_id IS NOT NULL
+        RETURNING id
+    )
+    SELECT COUNT(*)::INTEGER INTO poll_count FROM updated_polls;
+    RETURN QUERY SELECT poll_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION cleanup_old_expired_polls()
+RETURNS TABLE(deleted_count INTEGER) AS $$
+DECLARE
+    poll_count INTEGER;
+BEGIN
+    WITH deleted_polls AS (
+        DELETE FROM polls 
+        WHERE can_clone_until < NOW() AND status IN ('expired', 'completed')
         RETURNING id
     )
     SELECT COUNT(*)::INTEGER INTO poll_count FROM deleted_polls;
