@@ -87,6 +87,7 @@ REDIS_URL=redis://default:password@endpoint:port
 # App Configuration
 NEXT_PUBLIC_APP_URL=https://your-domain.com
 POLL_TTL_HOURS=24
+ANONYMOUS_POLL_TTL_HOURS=3
 POLL_CODE_LENGTH=4
 ```
 
@@ -113,6 +114,8 @@ To manage polls as an admin, you must grant access to your email. Run this in th
 ```sql
 SELECT grant_admin_access('your-email@example.com');
 ```
+
+*Note: If you already had an account, deleted it, and recreated it, you MUST run this command again with your email to synchronize your new account ID with your admin status.*
 
 ---
 

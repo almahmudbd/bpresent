@@ -12,6 +12,7 @@ import {
 } from "@/lib/types";
 
 const POLL_TTL_HOURS = parseInt(process.env.POLL_TTL_HOURS || "24");
+const ANONYMOUS_POLL_TTL_HOURS = parseInt(process.env.ANONYMOUS_POLL_TTL_HOURS || "3");
 const POLL_CODE_LENGTH = parseInt(process.env.POLL_CODE_LENGTH || "4");
 
 /**
@@ -57,7 +58,7 @@ export async function createPoll(
 
     // Calculate expiration based on authentication
     const isAuthenticated = !!presenterId;
-    const expirationHours = isAuthenticated ? 24 : 3; // 24h for logged-in, 3h for anonymous
+    const expirationHours = isAuthenticated ? POLL_TTL_HOURS : ANONYMOUS_POLL_TTL_HOURS;
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + expirationHours);
 
@@ -146,7 +147,7 @@ export async function createPoll(
 
         // Store poll metadata
         await redis.hset(`poll:${code}`, { ...redisPoll });
-        await redis.expire(`poll:${code}`, POLL_TTL_HOURS * 3600);
+        await redis.expire(`poll:${code}`, expirationHours * 3600);
 
         // Store slides data
         const redisSlides: RedisSlide[] = insertedSlides.map((slide) => ({
@@ -159,7 +160,7 @@ export async function createPoll(
         }));
 
         await redis.set(`poll:${code}:slides`, JSON.stringify(redisSlides));
-        await redis.expire(`poll:${code}:slides`, POLL_TTL_HOURS * 3600);
+        await redis.expire(`poll:${code}:slides`, expirationHours * 3600);
     }
 
     return {
