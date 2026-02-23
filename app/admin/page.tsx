@@ -28,6 +28,7 @@ export default function AdminPage() {
     const router = useRouter();
     const [activeTab, setActiveTab] = useState<"users" | "polls" | "admins" | "system" | "account">("users");
     const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
+    const [adminMismatch, setAdminMismatch] = useState(false);
     const [users, setUsers] = useState<UserStat[]>([]);
     const [polls, setPolls] = useState<PollStat[]>([]);
     const [admins, setAdmins] = useState<any[]>([]);
@@ -62,12 +63,15 @@ export default function AdminPage() {
         // Check if user is admin
         const { data: adminData } = await supabase
             .from("admin_users")
-            .select("user_id")
-            .eq("user_id", session.user.id)
-            .single();
+            .select("user_id, email")
+            .or(`user_id.eq.${session.user.id},email.eq.${session.user.email}`)
+            .maybeSingle();
 
         const isAdminUser = !!adminData;
+        const mismatch = !!(adminData && adminData.user_id !== session.user.id);
+
         setIsGlobalAdmin(isAdminUser);
+        setAdminMismatch(mismatch);
 
         if (!isAdminUser) {
             setActiveTab("account");
@@ -75,6 +79,8 @@ export default function AdminPage() {
             return;
         }
 
+        // If it's a mismatch, we still allow seeing the tabs in the UI, 
+        // but note that backend queries might fail due to RLS policies using is_admin()
         if (activeTab === "users") await loadUsers(session.access_token);
         if (activeTab === "polls") await loadPolls(session.access_token);
         if (activeTab === "admins") await loadAdmins();
@@ -320,6 +326,24 @@ export default function AdminPage() {
                                     {pwSuccess && (
                                         <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl text-sm mb-6">
                                             Password updated successfully!
+                                        </div>
+                                    )}
+
+                                    {adminMismatch && (
+                                        <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-4 rounded-xl text-sm mb-8 flex flex-col gap-2 shadow-sm">
+                                            <div className="flex items-center gap-2 font-bold text-amber-800">
+                                                <ShieldCheck className="w-5 h-5" />
+                                                Admin Synchronization Required
+                                            </div>
+                                            <p>Your email is recognized as an admin, but your account session ID does not match our records. This usually happens if you deleted and recreated your account.</p>
+                                            <div className="mt-2 p-3 bg-white/50 rounded-lg border border-amber-100 text-xs">
+                                                <p className="font-semibold mb-1">How to fix:</p>
+                                                <ol className="list-decimal ml-4 space-y-1">
+                                                    <li>Go to the SQL Editor in Supabase</li>
+                                                    <li>Run: <code className="bg-slate-800 text-slate-100 px-1.5 py-0.5 rounded ml-1">SELECT grant_admin_access(&apos;{admins.find(a => a.email === admins.find(a => true)?.email)?.email || "your-email"}@example.com&apos;);</code> (Replace with your actual email)</li>
+                                                    <li>Refresh this page.</li>
+                                                </ol>
+                                            </div>
                                         </div>
                                     )}
 

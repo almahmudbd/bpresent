@@ -18,12 +18,22 @@ export function UserMenu({ user }: UserMenuProps) {
     useEffect(() => {
         async function checkAdmin() {
             if (!user) return;
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from("admin_users")
-                .select("user_id")
-                .eq("user_id", user.id)
-                .single();
-            setIsAdmin(!!data);
+                .select("user_id, email")
+                .or(`user_id.eq.${user.id},email.eq.${user.email}`)
+                .maybeSingle();
+
+            if (error) {
+                console.error("Admin check error:", error);
+            }
+
+            const isAdm = !!data;
+            setIsAdmin(isAdm);
+
+            if (isAdm && data.user_id !== user.id) {
+                console.warn("Admin ID mismatch! email matches but user_id is different.");
+            }
         }
         checkAdmin();
     }, [user]);
