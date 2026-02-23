@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { ArrowLeft, Users, BarChart3, Trash2, Eye, ShieldCheck, Settings, Search } from "lucide-react";
+import { ArrowLeft, Users, BarChart3, Trash2, Eye, ShieldCheck, Settings, Search, Lock, EyeOff } from "lucide-react";
 
 interface UserStat {
     id: string;
@@ -26,7 +26,8 @@ interface PollStat {
 
 export default function AdminPage() {
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState<"users" | "polls" | "admins" | "system">("users");
+    const [activeTab, setActiveTab] = useState<"users" | "polls" | "admins" | "system" | "account">("users");
+    const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
     const [users, setUsers] = useState<UserStat[]>([]);
     const [polls, setPolls] = useState<PollStat[]>([]);
     const [admins, setAdmins] = useState<any[]>([]);
@@ -37,6 +38,14 @@ export default function AdminPage() {
     const [userPresentations, setUserPresentations] = useState<any[]>([]);
     const [grantEmail, setGrantEmail] = useState("");
     const [grantLoading, setGrantLoading] = useState(false);
+
+    // Password change states
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
+    const [pwLoading, setPwLoading] = useState(false);
+    const [pwError, setPwError] = useState("");
+    const [pwSuccess, setPwSuccess] = useState(false);
 
     useEffect(() => {
         checkAdminAndLoadData();
@@ -57,8 +66,12 @@ export default function AdminPage() {
             .eq("user_id", session.user.id)
             .single();
 
-        if (!adminData) {
-            router.push("/");
+        const isAdminUser = !!adminData;
+        setIsGlobalAdmin(isAdminUser);
+
+        if (!isAdminUser) {
+            setActiveTab("account");
+            setLoading(false);
             return;
         }
 
@@ -66,6 +79,39 @@ export default function AdminPage() {
         if (activeTab === "polls") await loadPolls(session.access_token);
         if (activeTab === "admins") await loadAdmins();
         if (activeTab === "system") await loadSystemInfo();
+        if (activeTab === "account") setLoading(false);
+    };
+
+    const handlePasswordUpdate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setPwError("");
+        setPwSuccess(false);
+
+        if (newPassword !== confirmPassword) {
+            setPwError("Passwords do not match");
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            setPwError("Password must be at least 6 characters");
+            return;
+        }
+
+        setPwLoading(true);
+        try {
+            const { error } = await supabase.auth.updateUser({
+                password: newPassword
+            });
+
+            if (error) throw error;
+            setPwSuccess(true);
+            setNewPassword("");
+            setConfirmPassword("");
+        } catch (err: any) {
+            setPwError(err.message || "Failed to update password");
+        } finally {
+            setPwLoading(false);
+        }
     };
 
     const loadSystemInfo = async () => {
@@ -222,12 +268,16 @@ export default function AdminPage() {
                         <Link href="/" className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-indigo-600 mb-4 transition-colors">
                             <ArrowLeft className="w-4 h-4" /> Back to Home
                         </Link>
-                        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Admin Console</h1>
-                        <p className="text-slate-500 mt-1">Manage users, polls, and system access</p>
+                        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+                            {isGlobalAdmin ? "Admin Console" : "Account Settings"}
+                        </h1>
+                        <p className="text-slate-500 mt-1">
+                            {isGlobalAdmin ? "Manage users, polls, and system access" : "Manage your account and security settings"}
+                        </p>
                     </div>
 
                     <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200">
-                        {["users", "polls", "admins", "system"].map((tab) => (
+                        {isGlobalAdmin && ["users", "polls", "admins", "system"].map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab as any)}
@@ -237,6 +287,13 @@ export default function AdminPage() {
                                 {tab}
                             </button>
                         ))}
+                        <button
+                            onClick={() => setActiveTab("account")}
+                            className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === "account" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 hover:bg-slate-50"
+                                }`}
+                        >
+                            Account
+                        </button>
                     </div>
                 </div>
 
@@ -248,7 +305,80 @@ export default function AdminPage() {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {/* Main Content Area */}
                         <div className="lg:col-span-2 space-y-6">
-                            {activeTab === "users" && (
+                            {activeTab === "account" && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+                                    <div className="flex items-center gap-3 mb-8">
+                                        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                                            <Lock className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-xl font-bold text-slate-900">Security & Password</h2>
+                                            <p className="text-sm text-slate-500">Update your account password</p>
+                                        </div>
+                                    </div>
+
+                                    {pwSuccess && (
+                                        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl text-sm mb-6">
+                                            Password updated successfully!
+                                        </div>
+                                    )}
+
+                                    <form onSubmit={handlePasswordUpdate} className="space-y-6 max-w-md">
+                                        <div className="relative">
+                                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                                New Password
+                                            </label>
+                                            <input
+                                                type={showPassword ? "text" : "password"}
+                                                value={newPassword}
+                                                onChange={(e) => setNewPassword(e.target.value)}
+                                                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none pr-10 bg-slate-50/50"
+                                                placeholder="Enter new password"
+                                                required
+                                                minLength={6}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                                className="absolute right-3 top-[38px] text-slate-400 hover:text-slate-600"
+                                            >
+                                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                                Confirm New Password
+                                            </label>
+                                            <input
+                                                type={showPassword ? "text" : "password"}
+                                                value={confirmPassword}
+                                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-slate-50/50"
+                                                placeholder="Confirm new password"
+                                                required
+                                                minLength={6}
+                                            />
+                                        </div>
+
+                                        {pwError && (
+                                            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-xl text-sm">
+                                                {pwError}
+                                            </div>
+                                        )}
+
+                                        <button
+                                            type="submit"
+                                            disabled={pwLoading}
+                                            className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-semibold transition-all shadow-md shadow-indigo-200"
+                                        >
+                                            {pwLoading ? "Updating..." : "Update Password"}
+                                        </button>
+                                    </form>
+                                </div>
+                            )}
+
+                            {activeTab === "users" && isGlobalAdmin && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                                     <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                                         <h2 className="font-semibold text-slate-800 flex items-center gap-2">
@@ -284,7 +414,7 @@ export default function AdminPage() {
                                 </div>
                             )}
 
-                            {activeTab === "polls" && (
+                            {activeTab === "polls" && isGlobalAdmin && (
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                                     <div className="p-5 border-b border-slate-100 bg-slate-50/50">
                                         <h2 className="font-semibold text-slate-800 flex items-center gap-2">
@@ -313,7 +443,7 @@ export default function AdminPage() {
                                 </div>
                             )}
 
-                            {activeTab === "admins" && (
+                            {activeTab === "admins" && isGlobalAdmin && (
                                 <div className="space-y-6">
                                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                                         <h2 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
@@ -358,7 +488,7 @@ export default function AdminPage() {
                                 </div>
                             )}
 
-                            {activeTab === "system" && systemInfo && (
+                            {activeTab === "system" && isGlobalAdmin && systemInfo && (
                                 <div className="space-y-6">
                                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                                         <h2 className="font-semibold text-slate-800 flex items-center gap-2 mb-6">
@@ -411,10 +541,11 @@ export default function AdminPage() {
                         <div className="space-y-6">
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                                 <h2 className="font-semibold text-slate-800 flex items-center gap-2 mb-6">
-                                    <Settings className="w-5 h-5 text-slate-400" /> User Details
+                                    <Settings className="w-5 h-5 text-slate-400" />
+                                    {isGlobalAdmin ? "User Details" : "Quick Info"}
                                 </h2>
 
-                                {selectedUser ? (
+                                {selectedUser && isGlobalAdmin ? (
                                     <div className="space-y-6">
                                         <div>
                                             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Recent Polls</h3>
@@ -445,9 +576,13 @@ export default function AdminPage() {
                                 ) : (
                                     <div className="text-center py-12">
                                         <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-                                            <Eye className="w-6 h-6" />
+                                            {isGlobalAdmin ? <Eye className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
                                         </div>
-                                        <p className="text-sm text-slate-400">Select a user to explore their content and activity</p>
+                                        <p className="text-sm text-slate-400">
+                                            {isGlobalAdmin
+                                                ? "Select a user to explore their content and activity"
+                                                : "Secure your account by changing your password regularly."}
+                                        </p>
                                     </div>
                                 )}
                             </div>
