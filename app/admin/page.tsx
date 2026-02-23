@@ -39,6 +39,7 @@ export default function AdminPage() {
     const [userPresentations, setUserPresentations] = useState<any[]>([]);
     const [grantEmail, setGrantEmail] = useState("");
     const [grantLoading, setGrantLoading] = useState(false);
+    const [currentSessionUser, setCurrentSessionUser] = useState<any>(null);
 
     // Password change states
     const [newPassword, setNewPassword] = useState("");
@@ -60,20 +61,33 @@ export default function AdminPage() {
             return;
         }
 
-        // Check if user is admin
-        const { data: adminData } = await supabase
-            .from("admin_users")
-            .select("user_id, email")
-            .or(`user_id.eq.${session.user.id},email.eq.${session.user.email}`)
-            .maybeSingle();
+        setCurrentSessionUser(session.user);
 
-        const isAdminUser = !!adminData;
-        const mismatch = !!(adminData && adminData.user_id !== session.user.id);
+        // Check if user is admin using SECURITY DEFINER RPC
+        const { data: isAdminResult, error: rpcError } = await supabase.rpc('is_admin', {
+            check_user_id: session.user.id
+        });
 
-        setIsGlobalAdmin(isAdminUser);
+        const isAdminUser = !!isAdminResult;
+
+        // Secondary check for mismatch/sync info if the user isn't immediate admin by ID
+        let mismatch = false;
+        if (!isAdminUser) {
+            const { data: emailData } = await supabase
+                .from("admin_users")
+                .select("user_id, email")
+                .eq("email", session.user.email)
+                .maybeSingle();
+
+            if (emailData) {
+                mismatch = true;
+            }
+        }
+
+        setIsGlobalAdmin(isAdminUser || mismatch);
         setAdminMismatch(mismatch);
 
-        if (!isAdminUser) {
+        if (!isAdminUser && !mismatch) {
             setActiveTab("account");
             setLoading(false);
             return;
@@ -344,6 +358,38 @@ export default function AdminPage() {
                                                     <li>Refresh this page.</li>
                                                 </ol>
                                             </div>
+                                        </div>
+                                    )}
+
+                                    {!isGlobalAdmin && (
+                                        <div className="mb-8 p-6 bg-amber-50 rounded-2xl border border-amber-200 shadow-sm">
+                                            <div className="flex items-center gap-2 font-bold text-amber-800 mb-2">
+                                                <ShieldCheck className="w-5 h-5" />
+                                                Admin Menu Missing?
+                                            </div>
+                                            <p className="text-sm text-amber-900 mb-4">
+                                                If you should have admin access, your current session information below needs to be registered in the <code className="bg-amber-100 px-1 rounded font-bold">admin_users</code> table.
+                                                If you recently recreated your account, your old admin status was deleted and must be granted again.
+                                            </p>
+                                            <div className="p-4 bg-white/60 rounded-xl border border-amber-100 space-y-2 text-xs font-mono text-slate-700">
+                                                <div className="flex justify-between">
+                                                    <span className="text-slate-400 uppercase tracking-tighter">Your Current ID:</span>
+                                                    <span className="font-bold">{currentSessionUser?.id || "Loading..."}</span>
+                                                </div>
+                                                <div className="flex justify-between border-t border-amber-100/50 pt-2">
+                                                    <span className="text-slate-400 uppercase tracking-tighter">Your Email:</span>
+                                                    <span className="font-bold">{currentSessionUser?.email || "Loading..."}</span>
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 p-3 bg-slate-800 rounded-xl text-slate-100 text-[11px]">
+                                                <p className="text-slate-400 mb-1 uppercase tracking-widest font-bold">SQL FIX COMMAND:</p>
+                                                <code className="break-all font-mono leading-relaxed">
+                                                    SELECT grant_admin_access(&apos;{currentSessionUser?.email || "your-email@example.com"}&apos;);
+                                                </code>
+                                            </div>
+                                            <p className="mt-3 text-[10px] text-amber-600 italic">
+                                                Paste this command into the Supabase SQL Editor to link your new account ID.
+                                            </p>
                                         </div>
                                     )}
 

@@ -18,22 +18,25 @@ export function UserMenu({ user }: UserMenuProps) {
     useEffect(() => {
         async function checkAdmin() {
             if (!user) return;
-            const { data, error } = await supabase
-                .from("admin_users")
-                .select("user_id, email")
-                .or(`user_id.eq.${user.id},email.eq.${user.email}`)
-                .maybeSingle();
 
-            if (error) {
-                console.error("Admin check error:", error);
+            // Call the SECURITY DEFINER RPC to bypass RLS on admin_users table
+            const { data: isAdminResult, error: rpcError } = await supabase.rpc('is_admin', {
+                check_user_id: user.id
+            });
+
+            if (rpcError) {
+                console.error("Admin RPC error:", rpcError);
+                // Fallback to direct query just in case RPC is missing or email check is needed
+                const { data } = await supabase
+                    .from("admin_users")
+                    .select("user_id, email")
+                    .eq("email", user.email)
+                    .maybeSingle();
+                setIsAdmin(!!data);
+                return;
             }
 
-            const isAdm = !!data;
-            setIsAdmin(isAdm);
-
-            if (isAdm && data.user_id !== user.id) {
-                console.warn("Admin ID mismatch! email matches but user_id is different.");
-            }
+            setIsAdmin(!!isAdminResult);
         }
         checkAdmin();
     }, [user]);

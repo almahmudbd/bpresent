@@ -89,6 +89,12 @@ export default function AboutPage() {
                             </div>
                             <span className="text-sm font-medium text-gray-600 group-hover:text-indigo-600">Portfolio</span>
                         </a>
+                        <a href="https://facebook.com/almahmudbd" className="flex flex-col items-center gap-2 group" target="_blank" rel="noopener noreferrer">
+                            <div className="p-4 bg-gray-50 rounded-full group-hover:bg-indigo-50 transition-colors">
+                                <Facebook className="w-6 h-6 text-gray-700 group-hover:text-indigo-600" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-600 group-hover:text-indigo-600">Facebook</span>
+                        </a>
                         <a href="mailto:wapmahmud@duck.com" className="flex flex-col items-center gap-2 group">
                             <div className="p-4 bg-gray-50 rounded-full group-hover:bg-red-50 transition-colors">
                                 <Info className="w-6 h-6 text-gray-700 group-hover:text-red-600" />

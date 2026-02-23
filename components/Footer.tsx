@@ -15,9 +15,6 @@ export function Footer() {
                     </p>
 
                     <div className="flex items-center gap-6">
-                        <a href="mailto:wapmahmud@duck.com" className="text-xs text-gray-500 hover:text-indigo-600 transition-colors">
-                            Report a problem
-                        </a>
                         <div className="flex gap-3">
                             <a href="https://github.com/almahmudbd/present" className="text-gray-400 hover:text-indigo-600 transition-colors" aria-label="GitHub">
                                 <Github className="w-4 h-4" />

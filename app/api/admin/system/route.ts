@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
     // Return system status
     return NextResponse.json({
-        redis_enabled: process.env.REDIS_ENABLED === 'true' || !!process.env.UPSTASH_REDIS_REST_URL,
+        redis_enabled: process.env.REDIS_ENABLED === 'true' || !!process.env.UPSTASH_REDIS_REST_URL || !!process.env.REDIS_URL,
         node_version: process.version,
         environment: process.env.NODE_ENV
     });
