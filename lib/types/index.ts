@@ -7,6 +7,7 @@ export interface Poll {
     presenter_id?: string; // Optional user ID
     active_slide_id: string;
     created_at: string;
+    expires_at: string; // Expiration timestamp
     archived_at?: string;
     settings?: PollSettings;
 }

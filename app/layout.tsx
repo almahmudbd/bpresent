@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "bPresent - Real-time Interactive Presentations",
+  title: "slide.pp.ua - Real-time Interactive Presentations",
   description: "Engage your audience with real-time polling and interactive presentations. Perfect for classrooms, workshops, and meetings.",
 };
 

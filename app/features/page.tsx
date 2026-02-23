@@ -41,16 +41,39 @@ export default function FeaturesPage() {
     ];
 
     const limitations = [
+        "Poll Expiration: Anonymous polls expire in 3 hours, while registered user polls remain active for 24 hours.",
         "Network Dependency: Requires a stable internet connection for real-time synchronization.",
         "Browser Support: Optimized for modern browsers; legacy versions may experience UI inconsistencies.",
-        "Free Tier Limitations: Certain advanced features or high participant counts might be restricted in the community version.",
-        "Static Content: Currently focused on polling and feedback rather than complex multimedia slide decks."
+        "Static Content: Focused on polling and feedback rather than complex multimedia slide decks."
     ];
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-5xl mx-auto space-y-16">
                 {/* Header */}
+                {/* How it Works Section */}
+                <section className="bg-indigo-600 rounded-3xl p-8 md:p-12 shadow-xl text-white mb-16">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl font-bold mb-4">How it Works</h2>
+                        <p className="text-indigo-100 italic">"Simplicity is the ultimate sophistication."</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                        {[
+                            { step: "01", title: "Create", desc: "Start a new slide or word cloud from your dashboard." },
+                            { step: "02", title: "Present", desc: "Open the presentation view on your projector/screen." },
+                            { step: "03", title: "Vote", desc: "Audience joins via code and votes in real-time." },
+                            { step: "04", title: "Review", desc: "Download results or share summaries with participants." }
+                        ].map((item, index) => (
+                            <div key={index} className="relative p-6 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20">
+                                <span className="text-4xl font-black text-white/20 absolute top-4 right-4">{item.step}</span>
+                                <h4 className="text-xl font-bold mb-2">{item.title}</h4>
+                                <p className="text-indigo-100 text-sm">{item.desc}</p>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
                 <div className="text-center space-y-4">
                     <h1 className="text-4xl font-bold text-gray-900 sm:text-5xl">
                         Detailed <span className="text-indigo-600">Features</span>
@@ -100,28 +123,6 @@ export default function FeaturesPage() {
                     </div>
                 </section>
 
-                {/* Basic Usage Section (Refined) */}
-                <section className="bg-indigo-600 rounded-3xl p-8 md:p-12 shadow-xl text-white">
-                    <div className="text-center mb-12">
-                        <h2 className="text-3xl font-bold mb-4">How it Works</h2>
-                        <p className="text-indigo-100 italic">"Simplicity is the ultimate sophistication."</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                        {[
-                            { step: "01", title: "Create", desc: "Start a new slide or word cloud from your dashboard." },
-                            { step: "02", title: "Present", desc: "Open the presentation view on your projector/screen." },
-                            { step: "03", title: "Vote", desc: "Audience joins via code and votes in real-time." },
-                            { step: "04", title: "Review", desc: "Download results or share summaries with participants." }
-                        ].map((item, index) => (
-                            <div key={index} className="relative p-6 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20">
-                                <span className="text-4xl font-black text-white/20 absolute top-4 right-4">{item.step}</span>
-                                <h4 className="text-xl font-bold mb-2">{item.title}</h4>
-                                <p className="text-indigo-100 text-sm">{item.desc}</p>
-                            </div>
-                        ))}
-                    </div>
-                </section>
             </div>
         </div>
     );

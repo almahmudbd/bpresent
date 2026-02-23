@@ -2,7 +2,8 @@
 
 import { useEffect, useState, use } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon, Plus } from "lucide-react";
+import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon, Plus, Clock } from "lucide-react";
+import { formatTimeRemaining } from "@/lib/timeUtils";
 import { type PollWithSlides, type SlideWithOptions } from "@/lib/types";
 import { QRCodeSVG } from "qrcode.react";
 import { BarChart } from "@/components/charts/BarChart";
@@ -468,8 +469,14 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                     {/* Mode Indicator */}
                     <div className="flex flex-col items-end gap-2">
                         {isLive ? (
-                            <div className="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse shadow-red-200 shadow-lg">
-                                Live
+                            <div className="flex flex-col items-end gap-1">
+                                <div className="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse shadow-red-200 shadow-lg">
+                                    Live
+                                </div>
+                                <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500 bg-white/50 px-2 py-0.5 rounded-lg border border-gray-100">
+                                    <Clock className="w-3 h-3 text-amber-500" />
+                                    {formatTimeRemaining(poll.expires_at)}
+                                </div>
                             </div>
                         ) : (
                             <div className="flex flex-col items-end gap-2">

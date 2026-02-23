@@ -18,6 +18,7 @@ import {
     Loader2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { formatTimeRemaining } from "@/lib/timeUtils";
 
 interface Poll {
     id: string;
@@ -221,7 +222,10 @@ export default function ActivePollsDashboard() {
                                     </div>
                                     <div className="flex items-center text-sm text-gray-500 gap-2">
                                         <Clock className="w-4 h-4" />
-                                        {poll.status === 'active' ? 'Expires' : 'Expired'}: {new Date(poll.expires_at).toLocaleDateString()}
+                                        {poll.status === 'active'
+                                            ? <span className="text-amber-600 font-medium">{formatTimeRemaining(poll.expires_at)}</span>
+                                            : `Expired on ${new Date(poll.expires_at).toLocaleDateString()}`
+                                        }
                                     </div>
                                 </div>
 
