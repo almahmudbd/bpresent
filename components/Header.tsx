@@ -34,9 +34,7 @@ export function Header() {
                         <div className="p-1.5 bg-indigo-600 rounded-lg group-hover:bg-indigo-700 transition-colors">
                             <BarChart3 className="w-5 h-5 text-white" />
                         </div>
-                        <span className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
-                            bPresent
-                        </span>
+                        slide.pp.ua
                     </Link>
 
                     <nav className="hidden md:flex items-center gap-6">
