@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase, supabaseAdmin } from "@/lib/supabaseClient";
 
 /**
  * GET /api/admin/users
@@ -31,8 +31,12 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
         }
 
+        if (!supabaseAdmin) {
+            return NextResponse.json({ error: "Supabase service role key not configured" }, { status: 500 });
+        }
+
         // Get all users from auth.users (admin query)
-        const { data: users, error: usersError } = await supabase.auth.admin.listUsers();
+        const { data: users, error: usersError } = await supabaseAdmin.auth.admin.listUsers();
 
         if (usersError) {
             return NextResponse.json({ error: usersError.message }, { status: 500 });
@@ -41,12 +45,15 @@ export async function GET(request: NextRequest) {
         // Get poll counts for each user
         const userStats = await Promise.all(
             users.users.map(async (u) => {
-                const { count: pollCount } = await supabase
+                // supabaseAdmin is already checked above, but let's be explicit for lint
+                const client = supabaseAdmin!;
+
+                const { count: pollCount } = await client
                     .from("polls")
                     .select("*", { count: "exact", head: true })
                     .eq("user_id", u.id);
 
-                const { count: presentationCount } = await supabase
+                const { count: presentationCount } = await client
                     .from("saved_presentations")
                     .select("*", { count: "exact", head: true })
                     .eq("user_id", u.id);

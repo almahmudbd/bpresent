@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase, supabaseAdmin } from "@/lib/supabaseClient";
 
 /**
  * GET /api/admin/polls
@@ -31,12 +31,16 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
         }
 
+        if (!supabaseAdmin) {
+            return NextResponse.json({ error: "Supabase service role key not configured" }, { status: 500 });
+        }
+
         // Get status filter from query params
         const { searchParams } = new URL(request.url);
         const status = searchParams.get("status");
 
         // Build query
-        let query = supabase
+        let query = supabaseAdmin
             .from("polls")
             .select(`
                 *,

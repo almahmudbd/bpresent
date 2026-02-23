@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon, Plus, Clock } from "lucide-react";
 import { formatTimeRemaining } from "@/lib/timeUtils";
@@ -61,6 +61,18 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     const [newOptions, setNewOptions] = useState(["", ""]);
     const [isAddingSlide, setIsAddingSlide] = useState(false);
 
+    // Use refs to avoid stale closures in intervals/callbacks
+    const activeSlideIdRef = useRef<string | null>(null);
+    const isSyncModeRef = useRef(isSyncMode);
+
+    useEffect(() => {
+        activeSlideIdRef.current = activeSlide?.id || null;
+    }, [activeSlide?.id]);
+
+    useEffect(() => {
+        isSyncModeRef.current = isSyncMode;
+    }, [isSyncMode]);
+
     useEffect(() => {
         setOrigin(window.location.origin);
         fetchPollData();
@@ -71,8 +83,7 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
         }, 5000);
 
         return () => clearInterval(interval);
-    }, [code, isSyncMode]); // Re-create interval if sync mode changes to capture correct state in closure? 
-    // Actually better to use ref or dependency, but fetching is stateless regarding isSyncMode except for the logic inside.
+    }, [code]); // Removed isSyncMode dependency to avoid redundant interval restarts
 
     const fetchPollData = async (isPolling = false) => {
         if (!isPolling) setRefreshing(true);
@@ -96,16 +107,14 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                 // First load
                 const active = data.slides.find((s: SlideWithOptions) => s.id === data.active_slide_id) || data.slides[0];
                 setActiveSlide(active);
-            } else {
-                // Update current active slide data (vote counts etc.)
-                // regardless of sync mode, we want the current view to reflect new data
-                const freshActive = data.slides.find((s: SlideWithOptions) => s.id === activeSlide.id);
+                // Update current active slide data
+                const freshActive = data.slides.find((s: SlideWithOptions) => s.id === activeSlideIdRef.current);
                 if (freshActive) {
                     setActiveSlide(freshActive);
                 }
 
                 // If in Sync Mode, ensure we are on the live slide
-                if (isSyncMode && data.active_slide_id !== activeSlide.id) {
+                if (isSyncModeRef.current && data.active_slide_id !== activeSlideIdRef.current) {
                     const live = data.slides.find((s: SlideWithOptions) => s.id === data.active_slide_id);
                     if (live) setActiveSlide(live);
                 }

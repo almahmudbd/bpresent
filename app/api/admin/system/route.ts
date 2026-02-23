@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase, supabaseAdmin } from "@/lib/supabaseClient";
 
 export async function POST(request: NextRequest) {
     const authHeader = request.headers.get("authorization");
@@ -12,23 +12,27 @@ export async function POST(request: NextRequest) {
     const { data: adminData } = await supabase.from("admin_users").select("user_id").eq("user_id", user.id).single();
     if (!adminData) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+    if (!supabaseAdmin) {
+        return NextResponse.json({ error: "Supabase service role key not configured" }, { status: 500 });
+    }
+
     try {
         const { action } = await request.json();
 
         if (action === "cleanup_anonymous") {
-            const { data, error } = await supabase.rpc("cleanup_expired_anonymous_polls");
+            const { data, error } = await supabaseAdmin.rpc("cleanup_expired_anonymous_polls");
             if (error) throw error;
             return NextResponse.json({ message: "Cleaned up anonymous polls", deleted: data });
         }
 
         if (action === "expire_authenticated") {
-            const { data, error } = await supabase.rpc("expire_authenticated_polls");
+            const { data, error } = await supabaseAdmin.rpc("expire_authenticated_polls");
             if (error) throw error;
             return NextResponse.json({ message: "Expired authenticated polls", expired: data });
         }
 
         if (action === "cleanup_old") {
-            const { data, error } = await supabase.rpc("cleanup_old_expired_polls");
+            const { data, error } = await supabaseAdmin.rpc("cleanup_old_expired_polls");
             if (error) throw error;
             return NextResponse.json({ message: "Cleaned up old polls", deleted: data });
         }

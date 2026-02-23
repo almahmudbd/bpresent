@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { CheckCircle2 } from "lucide-react";
@@ -23,6 +23,18 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
     const [text, setText] = useState("");
     const [viewingLive, setViewingLive] = useState(true);
     const [isCompleted, setIsCompleted] = useState(false);
+
+    // Use refs to avoid stale closures in intervals
+    const activeSlideIdRef = useRef<string | null>(null);
+    const viewingLiveRef = useRef(viewingLive);
+
+    useEffect(() => {
+        activeSlideIdRef.current = activeSlide?.id || null;
+    }, [activeSlide?.id]);
+
+    useEffect(() => {
+        viewingLiveRef.current = viewingLive;
+    }, [viewingLive]);
 
     useEffect(() => {
         fetchPollData();
@@ -60,18 +72,12 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
                     setIsCompleted(true);
                 }
             } else {
-                // Polling update: Update active slide data without forcing navigation unless needed
+                // Polling update: Update active slide data
                 setActiveSlide(prev => {
                     if (!prev) return live;
                     const freshSlide = data.slides.find((s: SlideWithOptions) => s.id === prev.id);
                     return freshSlide || prev;
                 });
-
-                // If handling "Sync to Live" logic implies we should follow the presenter:
-                if (viewingLive && live.id !== activeSlide?.id) {
-                    setActiveSlide(live);
-                    setText("");
-                }
 
                 if (data.status === 'completed' || data.status === 'expired') {
                     setIsCompleted(true);
@@ -147,7 +153,18 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [code, poll, viewingLive]);
+    }, [code, poll]); // Removed viewingLive to stabilize Realtime logic
+
+    // Dedicated effect for "Sync to Live" navigation
+    useEffect(() => {
+        if (viewingLive && liveSlideId && liveSlideId !== activeSlide?.id) {
+            const live = poll?.slides.find(s => s.id === liveSlideId);
+            if (live) {
+                setActiveSlide(live);
+                setText(""); // Only clear text when the slide ACTUALLY changes
+            }
+        }
+    }, [liveSlideId, viewingLive, poll?.slides]);
 
     const handleVote = async (optionId?: string) => {
         if (!activeSlide) return;
