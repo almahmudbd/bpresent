@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { addSlideToPoll, getPoll } from "@/lib/services/poll.service";
 import { supabase } from "@/lib/supabaseClient";
+import { SlideType, SlideStyle } from "@/lib/types";
 
 const addSlideSchema = z.object({
     code: z.string().length(4, "Code must be 4 digits"),
-    type: z.enum(["quiz", "word-cloud"]),
+    type: z.enum(["quiz", "word-cloud", "open-text", "ideas", "ranking", "rating", "survey"]),
     question: z.string().min(1, "Question is required"),
     options: z.array(z.string()).optional(),
-    style: z.string().optional(),
+    style: z.enum(["donut", "bar", "pie", "cloud", "bubble", "horizontal-bar", "stars", "scale", "list"]).optional(),
+    group_id: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -49,10 +51,11 @@ export async function POST(request: NextRequest) {
         }
 
         const newSlide = await addSlideToPoll(code, {
-            type,
+            type: type as SlideType,
             question,
             options,
-            style
+            style: style as SlideStyle | undefined,
+            group_id,
         });
 
         return NextResponse.json(newSlide);
