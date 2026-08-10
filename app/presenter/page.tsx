@@ -289,7 +289,6 @@ export default function PresenterDashboard() {
 
     // ── Render helpers ──
 
-    const standaloneSlides = slides.filter((s) => !s.groupId);
     const isValid = slides.every((s) => s.question.trim()) &&
         slides.every((s) => !OPTIONS_TYPES.includes(s.type) || s.options.every((o) => o.trim()));
 
@@ -501,54 +500,7 @@ function SlideCard({
     );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-component: SurveySlideCard (inside a survey group)
-// ─────────────────────────────────────────────────────────────────────────────
 
-function SurveySlideCard({
-    slide, sIndex, groupSlideIndex, onUpdateSlide, onRemove, canRemove,
-}: {
-    slide: SlideState; sIndex: number; groupSlideIndex: number;
-    onUpdateSlide: <K extends keyof SlideState>(field: K, value: SlideState[K]) => void;
-    onRemove: () => void;
-    canRemove: boolean;
-}) {
-    return (
-        <div className="survey-slide-card">
-            <div className="survey-slide-header">
-                <span className="survey-slide-num">Q{groupSlideIndex + 1}</span>
-                {canRemove && (
-                    <button className="btn-remove-slide" onClick={onRemove}>
-                        <Trash2 size={14} />
-                    </button>
-                )}
-            </div>
-            <input
-                type="text"
-                value={slide.question}
-                onChange={(e) => onUpdateSlide("question", e.target.value)}
-                className="slide-question-input"
-                placeholder="Survey question..."
-            />
-            {/* Survey sub-questions only support open-text and rating for now */}
-            <div className="survey-type-row">
-                <label>Type:</label>
-                <div className="survey-type-btns">
-                    {["open-text", "rating"].map((t) => (
-                        <button
-                            key={t}
-                            className={`survey-type-btn ${slide.type === t ? "selected" : ""}`}
-                            onClick={() => onUpdateSlide("type", t as SlideType)}
-                        >
-                            {t === "open-text" ? <AlignLeft size={14} /> : <Star size={14} />}
-                            {t === "open-text" ? "Open Text" : "Rating"}
-                        </button>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: StyleSelector
