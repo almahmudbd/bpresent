@@ -204,7 +204,7 @@ export interface OptionResult {
     text: string;
     votes: number;
     color?: string;
-    percentage: number;
+    percentage?: number;
     upvote_count?: number;
     // For ranking: average rank position
     avg_rank?: number;

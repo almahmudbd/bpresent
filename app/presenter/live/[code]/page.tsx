@@ -603,6 +603,7 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                                     id: opt.id,
                                     text: opt.text,
                                     votes: opt.vote_count,
+                                    percentage: totalVotes > 0 ? (opt.vote_count / totalVotes) * 100 : 0,
                                     avg_rank: opt.avg_rank,
                                     color: opt.color,
                                 }))}
