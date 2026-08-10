@@ -92,8 +92,29 @@ export function RankingSlide({
             </div>
 
             {hasVoted ? (
-                <div className="voted-message">
-                    <p>✅ Your ranking has been submitted!</p>
+                <div className="space-y-4">
+                    <div className="voted-message">
+                        <p>✅ Your ranking has been submitted!</p>
+                    </div>
+                    <div className="ranking-results">
+                        {([...options].sort((a, b) => (a.avg_rank || 999) - (b.avg_rank || 999))).map((opt, idx) => (
+                            <div key={opt.id} className="ranking-result-row">
+                                <div className="rank-position">#{idx + 1}</div>
+                                <div className="rank-bar-container">
+                                    <div className="rank-label">{opt.text}</div>
+                                    <div className="rank-bar-track">
+                                        <div
+                                            className="rank-bar-fill"
+                                            style={{ width: `${Math.max(5, 100 - ((opt.avg_rank || (idx + 1)) - 1) * 15)}%` }}
+                                        />
+                                    </div>
+                                    {opt.avg_rank && (
+                                        <span className="rank-avg">avg rank: {opt.avg_rank.toFixed(1)}</span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             ) : (
                 <>

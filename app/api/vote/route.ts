@@ -125,9 +125,9 @@ export async function POST(req: Request) {
         }
 
         // ── 6. Rating ──
-        if (body.rating_value !== undefined) {
-            const { code, slide_id, rating_value } = ratingVoteSchema.parse(body);
-            await submitRatingVote({ code, slide_id, rating_value, session_id: sessionId });
+        if (body.rating_value !== undefined || body.rating_items !== undefined) {
+            const { code, slide_id, rating_value, rating_items } = ratingVoteSchema.parse(body);
+            await submitRatingVote({ code, slide_id, rating_value, rating_items, session_id: sessionId });
             return setSessionCookie(NextResponse.json({ success: true }), sessionId);
         }
 

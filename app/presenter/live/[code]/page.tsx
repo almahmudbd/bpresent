@@ -12,6 +12,10 @@ import { CloudLayout } from "@/components/wordcloud/CloudLayout";
 import { BubbleLayout } from "@/components/wordcloud/BubbleLayout";
 import { ThankYouSlide } from "@/components/ThankYouSlide";
 import { PresenterQAPanel } from "@/components/qa/PresenterQAPanel";
+import { OpenTextSlide } from "@/components/slides/OpenTextSlide";
+import { IdeasSlide } from "@/components/slides/IdeasSlide";
+import { RankingSlide } from "@/components/slides/RankingSlide";
+import { RatingSlide } from "@/components/slides/RatingSlide";
 
 // Themes definition
 const THEMES = {
@@ -589,54 +593,70 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                                 })
                             )}
                         </div>
+                    ) : activeSlide.type === "ranking" ? (
+                        <div className="relative z-10">
+                            <RankingSlide
+                                slideId={activeSlide.id}
+                                code={code}
+                                question={activeSlide.question}
+                                options={activeSlide.options.map((opt) => ({
+                                    id: opt.id,
+                                    text: opt.text,
+                                    votes: opt.vote_count,
+                                    avg_rank: opt.avg_rank,
+                                    color: opt.color,
+                                }))}
+                                hasVoted={true}
+                                isPresenterView={true}
+                            />
+                        </div>
+                    ) : activeSlide.type === "rating" ? (
+                        <div className="relative z-10">
+                            <RatingSlide
+                                slideId={activeSlide.id}
+                                code={code}
+                                question={activeSlide.question}
+                                style={activeSlide.style || "stars"}
+                                options={activeSlide.options.map((opt) => ({
+                                    id: opt.id,
+                                    text: opt.text,
+                                    avg_rating: opt.avg_rating,
+                                }))}
+                                hasVoted={true}
+                                isPresenterView={true}
+                                averageRating={activeSlide.averageRating}
+                                totalVotes={totalVotes}
+                                ratingDistribution={activeSlide.ratingDistribution}
+                            />
+                        </div>
+                    ) : activeSlide.type === "open-text" ? (
+                        <div className="relative z-10">
+                            <OpenTextSlide
+                                slideId={activeSlide.id}
+                                code={code}
+                                question={activeSlide.question}
+                                hasVoted={true}
+                                responses={activeSlide.options.map((opt) => ({ id: opt.id, text: opt.text, created_at: "" }))}
+                                isPresenterView={true}
+                            />
+                        </div>
+                    ) : activeSlide.type === "ideas" ? (
+                        <div className="relative z-10">
+                            <IdeasSlide
+                                slideId={activeSlide.id}
+                                code={code}
+                                question={activeSlide.question}
+                                hasSubmitted={true}
+                                ideas={activeSlide.options.map((opt) => ({ id: opt.id, text: opt.text, votes: opt.vote_count }))}
+                                isPresenterView={true}
+                            />
+                        </div>
                     ) : (
                         <div className="flex flex-wrap gap-4 justify-center items-center h-full content-center p-8 relative z-10">
                             {activeSlide.style === "bubble" ? (
                                 <BubbleLayout words={activeSlide.options.map(opt => ({ id: opt.id, text: opt.text, count: opt.vote_count }))} />
-                            ) : activeSlide.style === "cloud" ? (
-                                <CloudLayout words={activeSlide.options.map(opt => ({ id: opt.id, text: opt.text, count: opt.vote_count }))} />
                             ) : (
-                                // Fallback/Default Layout
-                                <>
-                                    {activeSlide.options.map((option, index) => {
-                                        const color = theme.colors[index % theme.colors.length];
-                                        return (
-                                            <div
-                                                key={option.id}
-                                                className="relative px-8 py-4 rounded-full font-bold text-white shadow-lg transition-all duration-500 hover:scale-110 cursor-default animate-in zoom-in"
-                                                style={{
-                                                    backgroundColor: color,
-                                                    fontSize: `${Math.max(16, Math.min(90, 16 + (option.vote_count - 1) * 12))}px`,
-                                                    zIndex: option.vote_count,
-                                                    opacity: 0.9 + (Math.min(option.vote_count, 10) / 100)
-                                                }}
-                                            >
-                                                {option.text}
-                                                {option.vote_count > 1 && (
-                                                    <span
-                                                        className="absolute -top-2 -right-2 bg-white/90 text-gray-800 flex items-center justify-center rounded-full shadow-lg border-2 border-transparent text-xs"
-                                                        style={{
-                                                            width: '28px',
-                                                            height: '28px',
-                                                            minWidth: '28px'
-                                                        }}
-                                                    >
-                                                        {option.vote_count}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                    {activeSlide.options.length === 0 && (
-                                        <div className="text-center text-gray-400">
-                                            <div className="bg-gray-50 rounded-full p-8 mb-4 inline-block">
-                                                <RefreshCw className="w-12 h-12 text-gray-300 animate-spin-slow" />
-                                            </div>
-                                            <p className="text-2xl font-medium mb-2 opacity-60">Waiting for responses...</p>
-                                            <p className="opacity-40">Join and type a word to see it appear here!</p>
-                                        </div>
-                                    )}
-                                </>
+                                <CloudLayout words={activeSlide.options.map(opt => ({ id: opt.id, text: opt.text, count: opt.vote_count }))} />
                             )}
                         </div>
                     )}

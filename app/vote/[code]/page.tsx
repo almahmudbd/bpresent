@@ -167,6 +167,7 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         const response = await submitVoteAPI({ slide_id: activeSlide.id, text, vote_type: "open-text" });
         const data = await response.json();
         if (!data.success) throw new Error(data.error);
+        await fetchPollData(true);
     };
 
     const handleIdeaSubmit = async (text: string) => {
@@ -174,6 +175,7 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         const response = await submitVoteAPI({ slide_id: activeSlide.id, text, vote_type: "ideas" });
         const data = await response.json();
         if (!data.success) throw new Error(data.error);
+        await fetchPollData(true);
     };
 
     const handleIdeaUpvote = async (optionId: string) => {
@@ -181,6 +183,7 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         const response = await submitVoteAPI({ slide_id: activeSlide.id, idea_option_id: optionId });
         const data = await response.json();
         if (!data.success && !data.error?.includes("Already")) throw new Error(data.error);
+        await fetchPollData(true);
     };
 
     const handleRatingSubmit = async (value: number) => {
@@ -189,6 +192,7 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         const data = await response.json();
         if (data.success || response.status === 409) {
             setVotedSlides((prev) => new Set(prev).add(activeSlide.id));
+            await fetchPollData(true);
         } else throw new Error(data.error);
     };
 
@@ -198,6 +202,7 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         const data = await response.json();
         if (data.success || response.status === 409) {
             setVotedSlides((prev) => new Set(prev).add(activeSlide.id));
+            await fetchPollData(true);
         } else throw new Error(data.error);
     };
 
@@ -207,6 +212,7 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         const data = await response.json();
         if (data.success || response.status === 409) {
             setVotedSlides((prev) => new Set(prev).add(activeSlide.id));
+            await fetchPollData(true);
         } else throw new Error(data.error);
     };
 

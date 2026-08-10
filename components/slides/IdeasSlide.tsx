@@ -81,6 +81,7 @@ export function IdeasSlide({
                             disabled={!text.trim() || submitting}
                         >
                             <Send size={16} />
+                            <span className="font-bold text-sm">Submit</span>
                         </button>
                     </div>
                     <p className="ideas-hint">You can also upvote others' ideas ↓</p>
