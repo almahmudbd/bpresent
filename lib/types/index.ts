@@ -60,6 +60,8 @@ export interface Option {
     vote_count: number;
     color?: string;
     upvote_count?: number; // used for 'ideas' type
+    avg_rank?: number;     // used for 'ranking' type
+    avg_rating?: number;   // used for 'rating' type
 }
 
 export interface Vote {
@@ -120,6 +122,8 @@ export interface QuestionUpvote {
 
 export interface SlideWithOptions extends Slide {
     options: Option[];
+    averageRating?: number;
+    ratingDistribution?: Record<number, number>;
 }
 
 export interface PollWithSlides extends Poll {
