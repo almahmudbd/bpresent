@@ -786,6 +786,8 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                         </div>
                     </div>
                 </div>
+            )}
+
             {/* Presenter Q&A Drawer Modal */}
             {showQAPanel && poll.qa_enabled && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-end p-4" onClick={() => setShowQAPanel(false)}>
