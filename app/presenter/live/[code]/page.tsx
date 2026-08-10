@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon, Plus, Clock } from "lucide-react";
+import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon, Plus, Clock, MessageCircleQuestion } from "lucide-react";
 import { formatTimeRemaining } from "@/lib/timeUtils";
 import { type PollWithSlides, type SlideWithOptions } from "@/lib/types";
 import { QRCodeSVG } from "qrcode.react";
@@ -11,6 +11,7 @@ import { PieChart } from "@/components/charts/PieChart";
 import { CloudLayout } from "@/components/wordcloud/CloudLayout";
 import { BubbleLayout } from "@/components/wordcloud/BubbleLayout";
 import { ThankYouSlide } from "@/components/ThankYouSlide";
+import { PresenterQAPanel } from "@/components/qa/PresenterQAPanel";
 
 // Themes definition
 const THEMES = {
@@ -60,6 +61,8 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     const [newQuestion, setNewQuestion] = useState("");
     const [newOptions, setNewOptions] = useState(["", ""]);
     const [isAddingSlide, setIsAddingSlide] = useState(false);
+    const [showQAPanel, setShowQAPanel] = useState(false);
+    const [qaIsOpen, setQaIsOpen] = useState(false);
 
     // Use refs to avoid stale closures in intervals/callbacks
     const activeSlideIdRef = useRef<string | null>(null);
@@ -74,16 +77,13 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     }, [isSyncMode]);
 
     useEffect(() => {
-        setOrigin(window.location.origin);
         fetchPollData();
-
-        // Polling fallback (every 5 seconds)
         const interval = setInterval(() => {
             fetchPollData(true);
-        }, 5000);
+        }, 3000);
 
         return () => clearInterval(interval);
-    }, [code]); // Removed isSyncMode dependency to avoid redundant interval restarts
+    }, [code]);
 
     const fetchPollData = async (isPolling = false) => {
         if (!isPolling) setRefreshing(true);
@@ -101,6 +101,7 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
 
             setPoll(data);
             setLiveSlideId(data.active_slide_id);
+            setQaIsOpen(!!data.qa_is_open);
 
             // Logic to update active slide
             if (!activeSlide) {
@@ -622,6 +623,18 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                             <span className="hidden sm:inline">Add Slide</span>
                         </button>
 
+                        {/* Q&A Panel Button */}
+                        {poll.qa_enabled && (
+                            <button
+                                onClick={() => setShowQAPanel(!showQAPanel)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-colors font-medium border ${showQAPanel ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-indigo-100'}`}
+                            >
+                                <MessageCircleQuestion className="w-4 h-4" />
+                                <span className="hidden sm:inline">Q&amp;A</span>
+                                {qaIsOpen && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                            </button>
+                        )}
+
                         {/* Manual Refresh Button */}
                         <button
                             onClick={() => fetchPollData(false)}
@@ -770,6 +783,26 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                             >
                                 {isAddingSlide ? "Creating..." : "Create Slide"}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            {/* Presenter Q&A Drawer Modal */}
+            {showQAPanel && poll.qa_enabled && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-end p-4" onClick={() => setShowQAPanel(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md h-[90vh] overflow-hidden flex flex-col animate-in slide-in-from-right duration-200" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                            <span className="font-bold text-gray-900">Q&amp;A Manager</span>
+                            <button onClick={() => setShowQAPanel(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-200">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto">
+                            <PresenterQAPanel
+                                pollId={poll.id}
+                                qaEnabled={poll.qa_enabled}
+                                qaIsOpen={qaIsOpen}
+                                onToggleQA={setQaIsOpen}
+                            />
                         </div>
                     </div>
                 </div>

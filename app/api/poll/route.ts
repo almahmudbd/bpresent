@@ -10,13 +10,14 @@ import {
 import { getVotedSlideIds } from "@/lib/services/voting.service";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabaseClient";
+import { CreatePollInput } from "@/lib/types";
 
 // Validation schemas
 const createSlideSchema = z.object({
     type: z.enum(["quiz", "word-cloud", "open-text", "ideas", "ranking", "rating", "survey"]),
     question: z.string().min(1, "Question is required"),
     options: z.array(z.string()).optional(),
-    style: z.string().optional(),
+    style: z.enum(["donut", "bar", "pie", "cloud", "bubble", "horizontal-bar", "stars", "scale", "list"]).optional(),
     group_id: z.string().optional(),
 });
 
@@ -69,7 +70,7 @@ export async function POST(req: Request) {
         }
 
         // Create poll (with userId if authenticated, undefined if anonymous)
-        const { poll, code } = await createPoll(validatedData, userId);
+        const { poll, code } = await createPoll(validatedData as CreatePollInput, userId);
 
         return NextResponse.json({
             success: true,
