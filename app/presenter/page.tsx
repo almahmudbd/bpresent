@@ -196,22 +196,25 @@ export default function PresenterDashboard() {
     // ── Survey group mutations ──
 
     const addSurveyGroup = () => {
+        const newGroupId = crypto.randomUUID();
         const newGroup: SlideGroupState = {
-            id: crypto.randomUUID(),
+            id: newGroupId,
             title: "New Survey",
             type: "survey",
             collapsed: false,
         };
-        setGroups([...groups, newGroup]);
-        // Automatically add first survey slide to group
-        setSlides([...slides, {
-            id: crypto.randomUUID(),
-            question: "",
-            type: "survey",
-            options: [],
-            style: "list",
-            groupId: newGroup.id,
-        }]);
+        setGroups((prev) => [...prev, newGroup]);
+        setSlides((prev) => [
+            ...prev,
+            {
+                id: crypto.randomUUID(),
+                question: "",
+                type: "survey",
+                options: [],
+                style: "list",
+                groupId: newGroupId,
+            },
+        ]);
     };
 
     const updateGroup = (id: string, field: keyof SlideGroupState, value: any) => {
@@ -393,10 +396,10 @@ export default function PresenterDashboard() {
                                         <span className="survey-group-badge">Survey · {groupSlides.length} questions</span>
                                     </div>
                                     <div className="survey-group-actions">
-                                        <button onClick={() => updateGroup(group.id, "collapsed", !group.collapsed)}>
+                                        <button type="button" onClick={() => updateGroup(group.id, "collapsed", !group.collapsed)}>
                                             {group.collapsed ? <ChevronRight size={18} /> : <ChevronDown size={18} />}
                                         </button>
-                                        <button className="btn-remove-group" onClick={() => removeGroup(group.id)}>
+                                        <button type="button" className="btn-remove-group" onClick={() => removeGroup(group.id)}>
                                             <X size={16} />
                                         </button>
                                     </div>
@@ -419,6 +422,7 @@ export default function PresenterDashboard() {
                                             );
                                         })}
                                         <button
+                                            type="button"
                                             className="btn-add-survey-question"
                                             onClick={() => addSlide(group.id)}
                                         >
@@ -432,10 +436,10 @@ export default function PresenterDashboard() {
 
                     {/* Add slide / survey group buttons */}
                     <div className="builder-add-actions">
-                        <button className="btn-add-slide" onClick={() => addSlide()}>
+                        <button type="button" className="btn-add-slide" onClick={() => addSlide()}>
                             <Plus size={18} /> Add Slide
                         </button>
-                        <button className="btn-add-survey-group" onClick={addSurveyGroup}>
+                        <button type="button" className="btn-add-survey-group" onClick={addSurveyGroup}>
                             <FolderPlus size={18} /> Add Survey Group
                         </button>
                     </div>

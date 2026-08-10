@@ -77,6 +77,9 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     }, [isSyncMode]);
 
     useEffect(() => {
+        if (typeof window !== "undefined") {
+            setOrigin(window.location.origin);
+        }
         fetchPollData();
         const interval = setInterval(() => {
             fetchPollData(true);
@@ -192,7 +195,8 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     }, [code, isSyncMode]); // Add isSyncMode to dependency to react to sync changes if needed, mainly for useEffect logic
 
     const copyLink = () => {
-        const url = `${origin}/vote/${code}`;
+        const currentOrigin = origin || (typeof window !== "undefined" ? window.location.origin : "");
+        const url = `${currentOrigin}/vote/${code}`;
         navigator.clipboard.writeText(url);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -443,15 +447,17 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                     </button>
 
                     {/* QR Code Popup */}
-                    {showQr && origin && (
+                    {showQr && (
                         <div className="absolute top-full right-0 mt-4 p-6 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 flex flex-col items-center animate-in fade-in zoom-in duration-200 origin-top-right w-[280px]">
                             <div className="mb-4 text-center">
                                 <p className="text-lg font-bold text-gray-900">Scan to Join</p>
-                                <p className={`text-sm ${theme.accent} font-medium break-all mt-1`}>{origin}/vote/{code}</p>
+                                <p className={`text-sm ${theme.accent} font-medium break-all mt-1`}>
+                                    {origin || (typeof window !== "undefined" ? window.location.origin : "")}/vote/{code}
+                                </p>
                             </div>
                             <div className="p-3 bg-white rounded-xl border-2 border-dashed border-gray-200">
                                 <QRCodeSVG
-                                    value={`${origin}/vote/${code}`}
+                                    value={`${origin || (typeof window !== "undefined" ? window.location.origin : "")}/vote/${code}`}
                                     size={200}
                                     level="H"
                                     includeMargin={false}

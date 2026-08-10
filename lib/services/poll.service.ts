@@ -79,20 +79,35 @@ export async function createPoll(
     expiresAt.setHours(expiresAt.getHours() + expirationHours);
 
     // 1. Create poll in Supabase for persistence
-    const { data: pollData, error: pollError } = await supabase
+    const pollInsertObj: any = {
+        code,
+        title: input.title || input.slides[0]?.question || "Untitled Poll",
+        presenter_id: presenterId,
+        user_id: presenterId || null,
+        status: 'active',
+        expires_at: expiresAt.toISOString(),
+        qa_enabled: input.qa_enabled ?? false,
+        qa_is_open: false,
+    };
+
+    let { data: pollData, error: pollError } = await supabase
         .from("polls")
-        .insert({
-            code,
-            title: input.title || input.slides[0]?.question || "Untitled Poll",
-            presenter_id: presenterId,
-            user_id: presenterId || null,
-            status: 'active',
-            expires_at: expiresAt.toISOString(),
-            qa_enabled: input.qa_enabled ?? false,
-            qa_is_open: false,
-        })
+        .insert(pollInsertObj)
         .select()
         .single();
+
+    // Fallback if migration hasn't been executed yet (missing qa_enabled column)
+    if (pollError && pollError.message?.includes("qa_enabled")) {
+        delete pollInsertObj.qa_enabled;
+        delete pollInsertObj.qa_is_open;
+        const fallbackRes = await supabase
+            .from("polls")
+            .insert(pollInsertObj)
+            .select()
+            .single();
+        pollData = fallbackRes.data;
+        pollError = fallbackRes.error;
+    }
 
     if (pollError || !pollData) {
         throw new Error(`Failed to create poll: ${pollError?.message}`);
@@ -114,14 +129,11 @@ export async function createPoll(
             .insert(groupsToInsert)
             .select();
 
-        if (groupsError || !insertedGroups) {
-            throw new Error(`Failed to create slide groups: ${groupsError?.message}`);
+        if (!groupsError && insertedGroups) {
+            insertedGroups.forEach((dbGroup, idx) => {
+                groupIdMap[input.groups![idx].tempId] = dbGroup.id;
+            });
         }
-
-        // Map temp IDs to real IDs
-        insertedGroups.forEach((dbGroup, idx) => {
-            groupIdMap[input.groups![idx].tempId] = dbGroup.id;
-        });
     }
 
     // 3. Create slides in Supabase
