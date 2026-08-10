@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         const status = searchParams.get("status");
 
         // Build query
-        let query = supabaseAdmin
+        let query = db
             .from("polls")
             .select(`
                 *,

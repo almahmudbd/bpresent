@@ -33,6 +33,10 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
         }
 
+        if (!supabaseAdmin) {
+            return NextResponse.json({ error: "Supabase service role key not configured" }, { status: 500 });
+        }
+
         // Get all users from auth.users (admin query)
         const { data: users, error: usersError } = await supabaseAdmin.auth.admin.listUsers();
 
