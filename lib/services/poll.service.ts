@@ -9,11 +9,27 @@ import {
     type RedisSlide,
     type PollWithSlides,
     type SlideWithOptions,
+    type SlideGroup,
 } from "@/lib/types";
 
 const POLL_TTL_HOURS = parseInt(process.env.POLL_TTL_HOURS || "24");
 const ANONYMOUS_POLL_TTL_HOURS = parseInt(process.env.ANONYMOUS_POLL_TTL_HOURS || "3");
 const POLL_CODE_LENGTH = parseInt(process.env.POLL_CODE_LENGTH || "4");
+
+// Types that require predefined options
+const OPTION_TYPES = ["quiz", "ranking"];
+// Types that have NO predefined options at creation time
+const FREE_TEXT_TYPES = ["word-cloud", "open-text", "ideas"];
+// Default styles per slide type
+const DEFAULT_STYLE: Record<string, string> = {
+    "quiz": "donut",
+    "word-cloud": "cloud",
+    "open-text": "list",
+    "ideas": "list",
+    "ranking": "horizontal-bar",
+    "rating": "stars",
+    "survey": "list",
+};
 
 /**
  * Generate a unique 4-digit poll code
@@ -72,6 +88,8 @@ export async function createPoll(
             user_id: presenterId || null,
             status: 'active',
             expires_at: expiresAt.toISOString(),
+            qa_enabled: input.qa_enabled ?? false,
+            qa_is_open: false,
         })
         .select()
         .single();
@@ -80,13 +98,40 @@ export async function createPoll(
         throw new Error(`Failed to create poll: ${pollError?.message}`);
     }
 
-    // 2. Create slides in Supabase
+    // 2. Create survey groups (if any)
+    const groupIdMap: Record<string, string> = {}; // tempId -> real DB id
+
+    if (input.groups && input.groups.length > 0) {
+        const groupsToInsert = input.groups.map((g) => ({
+            poll_id: pollData.id,
+            title: g.title,
+            type: g.type,
+            order_index: g.order_index,
+        }));
+
+        const { data: insertedGroups, error: groupsError } = await supabase
+            .from("slide_groups")
+            .insert(groupsToInsert)
+            .select();
+
+        if (groupsError || !insertedGroups) {
+            throw new Error(`Failed to create slide groups: ${groupsError?.message}`);
+        }
+
+        // Map temp IDs to real IDs
+        insertedGroups.forEach((dbGroup, idx) => {
+            groupIdMap[input.groups![idx].tempId] = dbGroup.id;
+        });
+    }
+
+    // 3. Create slides in Supabase
     const slidesToInsert = input.slides.map((slide, index) => ({
         poll_id: pollData.id,
         type: slide.type,
         question: slide.question,
         order_index: index,
-        style: slide.style || (slide.type === 'word-cloud' ? 'cloud' : 'donut'),
+        style: slide.style || DEFAULT_STYLE[slide.type] || 'donut',
+        group_id: slide.group_id ? (groupIdMap[slide.group_id] || slide.group_id) : null,
     }));
 
     const { data: insertedSlides, error: slidesError } = await supabase
@@ -98,7 +143,7 @@ export async function createPoll(
         throw new Error(`Failed to create slides: ${slidesError?.message}`);
     }
 
-    // 3. Create options for quiz slides
+    // 4. Create predefined options for quiz and ranking slides
     const optionsToInsert: any[] = [];
     const COLORS = [
         "#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#db2777",
@@ -106,7 +151,7 @@ export async function createPoll(
 
     insertedSlides.forEach((dbSlide, index) => {
         const inputSlide = input.slides[index];
-        if (inputSlide.type === "quiz" && inputSlide.options) {
+        if (OPTION_TYPES.includes(inputSlide.type) && inputSlide.options) {
             inputSlide.options.forEach((optText, optIndex) => {
                 optionsToInsert.push({
                     slide_id: dbSlide.id,
@@ -127,14 +172,14 @@ export async function createPoll(
         }
     }
 
-    // 4. Set active slide to the first one
+    // 5. Set active slide to the first one
     const firstSlideId = insertedSlides[0].id;
     await supabase
         .from("polls")
         .update({ active_slide_id: firstSlideId })
         .eq("id", pollData.id);
 
-    // 5. Store in Redis for fast access (if enabled)
+    // 6. Store in Redis for fast access (if enabled)
     if (redis.enabled) {
         const redisPoll: RedisPoll = {
             id: pollData.id,
@@ -143,20 +188,21 @@ export async function createPoll(
             presenter_id: presenterId,
             active_slide_id: firstSlideId,
             created_at: pollData.created_at,
+            qa_enabled: String(input.qa_enabled ?? false),
+            qa_is_open: "false",
         };
 
-        // Store poll metadata
         await redis.hset(`poll:${code}`, { ...redisPoll });
         await redis.expire(`poll:${code}`, expirationHours * 3600);
 
-        // Store slides data
         const redisSlides: RedisSlide[] = insertedSlides.map((slide) => ({
             id: slide.id,
             poll_id: slide.poll_id,
             type: slide.type,
             question: slide.question,
             order_index: slide.order_index,
-            options: [], // Will be populated when fetching
+            options: [],
+            group_id: slide.group_id,
         }));
 
         await redis.set(`poll:${code}:slides`, JSON.stringify(redisSlides));
@@ -394,6 +440,20 @@ export async function deletePoll(code: string): Promise<void> {
  */
 import { CreateSlideInput } from "@/lib/types";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Fetch slide groups for a poll
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getSlideGroups(pollId: string): Promise<SlideGroup[]> {
+    const { data, error } = await supabase
+        .from("slide_groups")
+        .select("*")
+        .eq("poll_id", pollId)
+        .order("order_index", { ascending: true });
+
+    if (error) throw new Error(`Failed to fetch slide groups: ${error.message}`);
+    return data || [];
+}
+
 export async function addSlideToPoll(
     code: string,
     slideInput: CreateSlideInput
@@ -428,7 +488,8 @@ export async function addSlideToPoll(
             type: slideInput.type,
             question: slideInput.question,
             order_index: nextOrderIndex,
-            style: slideInput.style || (slideInput.type === 'word-cloud' ? 'cloud' : 'donut'),
+            style: slideInput.style || DEFAULT_STYLE[slideInput.type] || 'donut',
+            group_id: slideInput.group_id || null,
         })
         .select()
         .single();
@@ -441,7 +502,7 @@ export async function addSlideToPoll(
     const optionsToInsert: any[] = [];
     const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#db2777"];
 
-    if (slideInput.type === "quiz" && slideInput.options) {
+    if (OPTION_TYPES.includes(slideInput.type) && slideInput.options) {
         slideInput.options.forEach((optText, optIndex) => {
             optionsToInsert.push({
                 slide_id: insertedSlide.id,

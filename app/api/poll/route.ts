@@ -13,15 +13,25 @@ import { supabase } from "@/lib/supabaseClient";
 
 // Validation schemas
 const createSlideSchema = z.object({
-    type: z.enum(["quiz", "word-cloud"]),
+    type: z.enum(["quiz", "word-cloud", "open-text", "ideas", "ranking", "rating", "survey"]),
     question: z.string().min(1, "Question is required"),
     options: z.array(z.string()).optional(),
     style: z.string().optional(),
+    group_id: z.string().optional(),
+});
+
+const createSlideGroupSchema = z.object({
+    tempId: z.string(),
+    title: z.string().min(1),
+    type: z.literal("survey"),
+    order_index: z.number().int().min(0),
 });
 
 const createPollSchema = z.object({
     title: z.string().optional(),
     slides: z.array(createSlideSchema).min(1, "At least one slide is required"),
+    groups: z.array(createSlideGroupSchema).optional(),
+    qa_enabled: z.boolean().optional(),
 });
 
 const updatePollSchema = z.object({

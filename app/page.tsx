@@ -1,11 +1,78 @@
+"use client";
+
 import Link from "next/link";
-import { ArrowRight, BarChart3, Users, Zap, Globe, Shield } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { ArrowRight, BarChart3, Users, Zap, Globe, Shield, Hash } from "lucide-react";
 
 export default function Home() {
+  const router = useRouter();
+  const [code, setCode] = useState("");
+  const [focused, setFocused] = useState(false);
+
+  const handleJoin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (code.length === 4) {
+      router.push(`/vote/${code}`);
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 text-gray-900">
-      <div className="max-w-4xl text-center space-y-12">
-        {/* Hero Section */}
+      <div className="max-w-4xl w-full text-center space-y-12">
+
+        {/* ── Slido-style Join Bar ── */}
+        <div className="flex justify-center">
+          <form
+            onSubmit={handleJoin}
+            className={`
+              flex items-center gap-0 rounded-full overflow-hidden
+              shadow-lg transition-all duration-300
+              ${focused
+                ? "ring-4 ring-indigo-400/40 shadow-indigo-200/60 shadow-xl"
+                : "ring-2 ring-gray-200/80"
+              }
+            `}
+          >
+            {/* Left label */}
+            <div className="flex items-center gap-2 bg-indigo-600 px-5 py-3.5 text-white text-sm font-semibold whitespace-nowrap select-none">
+              <Users className="h-4 w-4" />
+              Joining as a participant?
+            </div>
+
+            {/* Input area */}
+            <div className="flex items-center bg-white px-4 py-3.5 gap-2 flex-1 min-w-[180px]">
+              <Hash className="h-4 w-4 text-indigo-400 flex-shrink-0" />
+              <input
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                placeholder="Enter code here"
+                maxLength={4}
+                className="outline-none text-sm text-gray-700 placeholder-gray-400 w-full font-medium bg-transparent"
+              />
+            </div>
+
+            {/* Submit button */}
+            <button
+              type="submit"
+              disabled={code.length !== 4}
+              className="
+                flex items-center justify-center bg-white pr-4 pl-2 py-3.5
+                text-indigo-600 disabled:text-gray-300
+                transition-colors duration-200 cursor-pointer disabled:cursor-default
+                hover:enabled:text-indigo-800
+              "
+              aria-label="Join poll"
+            >
+              <ArrowRight className="h-5 w-5" />
+            </button>
+          </form>
+        </div>
+
+        {/* ── Hero Section ── */}
         <div className="space-y-6">
           <h1 className="text-6xl font-bold tracking-tight text-gray-900 sm:text-7xl">
             Real-time <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Polling</span>
@@ -15,7 +82,7 @@ export default function Home() {
           </p>
         </div>
 
-        {/* CTA Buttons */}
+        {/* ── CTA Buttons ── */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <Link
             href="/join"
@@ -46,7 +113,7 @@ export default function Home() {
           </Link>
         </div>
 
-        {/* Feature Highlights */}
+        {/* ── Feature Highlights ── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left mt-12">
           <div className="flex items-start gap-4 p-6 bg-white/60 backdrop-blur rounded-2xl border border-gray-100 shadow-sm">
             <div className="h-12 w-12 bg-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -79,11 +146,11 @@ export default function Home() {
           </div>
         </div>
 
-        {/* How it Works Section */}
+        {/* ── How it Works ── */}
         <section className="bg-indigo-600 rounded-3xl p-8 md:p-12 shadow-xl text-white max-w-5xl mx-auto w-full">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold mb-4">How it Works</h2>
-            <p className="text-indigo-100 italic">"Simplicity is the ultimate sophistication."</p>
+            <p className="text-indigo-100 italic">&quot;Simplicity is the ultimate sophistication.&quot;</p>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 text-left">
@@ -102,7 +169,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Footer */}
+        {/* ── Footer ── */}
         <p className="text-sm text-gray-400 mt-12">
           Perfect for classrooms, workshops, and presentations
         </p>
