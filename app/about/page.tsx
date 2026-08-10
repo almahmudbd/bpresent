@@ -2,26 +2,26 @@ import { Github, Facebook, Globe, ExternalLink, Info, Link as LinkIcon } from "l
 
 export default function AboutPage() {
     return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="min-h-screen bg-[#f6f2e9] py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-4xl mx-auto space-y-12">
                 {/* Header */}
                 <div className="text-center space-y-4">
-                    <h1 className="text-4xl font-bold text-gray-900 sm:text-5xl">
-                        About <span className="text-indigo-600">slide.pp.ua</span>
+                    <h1 className="font-[family-name:var(--font-lora)] text-4xl font-semibold text-[#173d59] sm:text-5xl">
+                        About <span className="text-[#9a7625]">slide.pp.ua</span>
                     </h1>
-                    <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                    <p className="text-xl text-[#596570] max-w-2xl mx-auto">
                         Real-time interactive presentations for modern classrooms.
                     </p>
                 </div>
 
                 {/* Project Details */}
-                <section className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col md:flex-row gap-8 items-center">
-                    <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center flex-shrink-0">
-                        <Info className="w-8 h-8 text-indigo-600" />
+                <section className="bg-[#fbfaf5] border border-[#d7d0c2] p-8 shadow-sm flex flex-col md:flex-row gap-8 items-center">
+                    <div className="w-16 h-16 bg-[#e7eff1] flex items-center justify-center flex-shrink-0">
+                        <Info className="w-8 h-8 text-[#173d59]" />
                     </div>
                     <div className="space-y-4">
-                        <h2 className="text-2xl font-bold text-gray-900">Project Mission</h2>
-                        <p className="text-gray-600 leading-relaxed">
+                        <h2 className="font-[family-name:var(--font-lora)] text-2xl font-semibold text-[#173d59]">Project Mission</h2>
+                        <p className="text-[#596570] leading-relaxed">
                             slide.pp.ua is designed to enhance classroom engagement through real-time feedback. Teachers and presenters can create instant polls, word clouds, and interactive slides, while students participate anonymously using any device. Our goal is to make every presentation a two-way conversation.
                         </p>
                     </div>
@@ -29,7 +29,7 @@ export default function AboutPage() {
 
                 {/* Domain Links */}
                 <section className="space-y-6">
-                    <h2 className="text-2xl font-bold text-gray-900 text-center">Available Domains</h2>
+                    <h2 className="font-[family-name:var(--font-lora)] text-2xl font-semibold text-[#173d59] text-center">Available Domains</h2>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <a
                             href="https://slide.pp.ua/"
@@ -74,8 +74,8 @@ export default function AboutPage() {
                 </section>
 
                 {/* Developer Links */}
-                <section className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">Connect with Me</h2>
+                <section className="bg-[#fbfaf5] p-8 shadow-sm border border-[#d7d0c2]">
+                    <h2 className="font-[family-name:var(--font-lora)] text-2xl font-semibold text-[#173d59] mb-6 text-center">Connect with Me</h2>
                     <div className="flex justify-center gap-8">
                         <a href="https://github.com/almahmudbd/present" className="flex flex-col items-center gap-2 group" target="_blank" rel="noopener noreferrer">
                             <div className="p-4 bg-gray-50 rounded-full group-hover:bg-indigo-50 transition-colors">

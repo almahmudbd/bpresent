@@ -48,14 +48,14 @@ export default function FeaturesPage() {
     ];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="min-h-screen bg-[#f6f2e9] py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-5xl mx-auto space-y-16">
                 {/* Header */}
                 {/* How it Works Section */}
-                <section className="bg-indigo-600 rounded-3xl p-8 md:p-12 shadow-xl text-white mb-16">
+                <section className="bg-[#173d59] border-t-4 border-[#d8b768] p-8 md:p-12 shadow-sm text-white mb-16">
                     <div className="text-center mb-12">
                         <h2 className="text-3xl font-bold mb-4">How it Works</h2>
-                        <p className="text-indigo-100 italic">"Simplicity is the ultimate sophistication."</p>
+                        <p className="text-[#d4dfe2] italic">"Simplicity is the ultimate sophistication."</p>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -65,20 +65,20 @@ export default function FeaturesPage() {
                             { step: "03", title: "Vote", desc: "Audience joins via code and votes in real-time." },
                             { step: "04", title: "Review", desc: "Download results or share summaries with participants." }
                         ].map((item, index) => (
-                            <div key={index} className="relative p-6 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20">
+                            <div key={index} className="relative p-6 bg-white/5 border-l-2 border-[#d8b768]">
                                 <span className="text-4xl font-black text-white/20 absolute top-4 right-4">{item.step}</span>
                                 <h4 className="text-xl font-bold mb-2">{item.title}</h4>
-                                <p className="text-indigo-100 text-sm">{item.desc}</p>
+                                <p className="text-[#d4dfe2] text-sm">{item.desc}</p>
                             </div>
                         ))}
                     </div>
                 </section>
 
                 <div className="text-center space-y-4">
-                    <h1 className="text-4xl font-bold text-gray-900 sm:text-5xl">
-                        Detailed <span className="text-indigo-600">Features</span>
+                    <h1 className="font-[family-name:var(--font-lora)] text-4xl font-semibold text-[#173d59] sm:text-5xl">
+                        Detailed <span className="text-[#9a7625]">Features</span>
                     </h1>
-                    <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                    <p className="text-xl text-[#596570] max-w-2xl mx-auto">
                         Explore the full capabilities of slide.pp.ua and how it transforms your presentations.
                     </p>
                 </div>
@@ -86,16 +86,16 @@ export default function FeaturesPage() {
                 {/* Features List Layout */}
                 <div className="space-y-12">
                     {mainFeatures.map((feature, index) => (
-                        <div key={index} className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-8 items-start hover:shadow-md transition-shadow">
+                        <div key={index} className="bg-[#fbfaf5] p-8 border border-[#d7d0c2] flex flex-col md:flex-row gap-8 items-start hover:shadow-md transition-shadow">
                             <div className={`w-16 h-16 ${feature.bg} rounded-2xl flex items-center justify-center flex-shrink-0`}>
                                 <feature.icon className={`w-8 h-8 ${feature.color}`} />
                             </div>
                             <div className="flex-1 space-y-4">
-                                <h3 className="text-2xl font-bold text-gray-900">{feature.title}</h3>
+                                <h3 className="font-[family-name:var(--font-lora)] text-2xl font-semibold text-[#173d59]">{feature.title}</h3>
                                 <ul className="space-y-3">
                                     {feature.details.map((detail, idx) => (
-                                        <li key={idx} className="flex items-start gap-3 text-gray-600">
-                                            <div className="mt-1.5 w-1.5 h-1.5 bg-indigo-600 rounded-full flex-shrink-0" />
+                                        <li key={idx} className="flex items-start gap-3 text-[#596570]">
+                                            <div className="mt-1.5 w-1.5 h-1.5 bg-[#9a7625] rounded-full flex-shrink-0" />
                                             <span className="text-lg leading-relaxed">{detail}</span>
                                         </li>
                                     ))}
@@ -106,12 +106,12 @@ export default function FeaturesPage() {
                 </div>
 
                 {/* Limitations Section */}
-                <section className="bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-red-50">
+                <section className="bg-[#fbfaf5] p-8 md:p-12 shadow-sm border border-[#d7d0c2]">
                     <div className="flex items-center gap-3 mb-8">
                         <div className="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center">
                             <AlertCircle className="w-6 h-6 text-red-500" />
                         </div>
-                        <h2 className="text-2xl font-bold text-gray-900">Current Limitations</h2>
+                        <h2 className="font-[family-name:var(--font-lora)] text-2xl font-semibold text-[#173d59]">Current Limitations</h2>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {limitations.map((limit, index) => (
