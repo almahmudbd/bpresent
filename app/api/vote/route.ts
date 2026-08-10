@@ -47,6 +47,7 @@ const ideaUpvoteSchema = z.object({
 const ratingVoteSchema = z.object({
     code: z.string().length(4),
     slide_id: z.string().uuid(),
+    option_id: z.string().uuid().optional(),
     rating_value: z.number().min(1).max(10).optional(),
     rating_items: z.array(z.object({
         option_id: z.string().uuid(),
@@ -126,8 +127,8 @@ export async function POST(req: Request) {
 
         // ── 6. Rating ──
         if (body.rating_value !== undefined || body.rating_items !== undefined) {
-            const { code, slide_id, rating_value, rating_items } = ratingVoteSchema.parse(body);
-            await submitRatingVote({ code, slide_id, rating_value, rating_items, session_id: sessionId });
+            const { code, slide_id, option_id, rating_value, rating_items } = ratingVoteSchema.parse(body);
+            await submitRatingVote({ code, slide_id, option_id, rating_value, rating_items, session_id: sessionId });
             return setSessionCookie(NextResponse.json({ success: true }), sessionId);
         }
 
@@ -150,7 +151,7 @@ export async function POST(req: Request) {
             if (error.message.includes("Already voted") || error.message.includes("Already upvoted")) {
                 return NextResponse.json({ error: error.message }, { status: 409 });
             }
-            if (error.message.includes("not found")) {
+            if (error.message.includes("Poll not found")) {
                 return NextResponse.json({ error: error.message }, { status: 404 });
             }
         }

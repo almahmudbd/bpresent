@@ -40,7 +40,7 @@ export async function GET(req: Request) {
                 .eq("session_id", sessionId)
                 .in("question_id", questions.map((q) => q.id));
 
-            upvotedIds = new Set((upvotes || []).map((u) => u.question_id));
+            upvotedIds = new Set((upvotes || []).map((u: { question_id: string }) => u.question_id));
         }
 
         const questionsWithUpvoteState = questions.map((q) => ({
@@ -137,7 +137,7 @@ export async function PUT(req: Request) {
             return NextResponse.json({ success: true });
         }
 
-        await applyPresenterQAAction(parsed as any);
+        await applyPresenterQAAction(parsed);
         return NextResponse.json({ success: true });
     } catch (error) {
         if (error instanceof z.ZodError) {

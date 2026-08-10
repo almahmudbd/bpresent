@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase as anonSupabase, supabaseAdmin } from "@/lib/supabaseClient";
+import type { SlideType, SlideStyle } from "@/lib/types";
 
 const supabase = supabaseAdmin || anonSupabase;
+
+interface PollRow {
+    id: string;
+    title: string;
+    created_at: string;
+    code: string;
+    slides: {
+        type: SlideType;
+        question: string;
+        order_index: number;
+        style?: SlideStyle;
+        options?: { text: string }[];
+    }[];
+}
 
 // GET /api/presentations - List all user's presentations & polls
 export async function GET(request: NextRequest) {
@@ -32,13 +47,13 @@ export async function GET(request: NextRequest) {
             .or(`user_id.eq.${user.id},presenter_id.eq.${user.id}`)
             .order("created_at", { ascending: false });
 
-        const formattedPolls = (userPolls || []).map((poll: any) => {
+        const formattedPolls = ((userPolls as PollRow[] | null) || []).map((poll) => {
             const sortedSlides = (poll.slides || [])
-                .sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0))
-                .map((s: any) => ({
+                .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+                .map((s) => ({
                     type: s.type,
                     question: s.question,
-                    options: (s.options || []).map((o: any) => o.text),
+                    options: (s.options || []).map((o) => o.text),
                     style: s.style,
                 }));
 

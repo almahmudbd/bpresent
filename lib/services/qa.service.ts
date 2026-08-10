@@ -88,15 +88,36 @@ export async function getUpvotedQuestionIds(
     pollId: string,
     sessionId: string
 ): Promise<string[]> {
-    const { data, error } = await supabase
+    // Step 1: fetch all question ids this session has upvoted
+    const { data: upvotes, error: upvotesError } = await supabase
         .from("question_upvotes")
-        .select("question_id, questions!inner(poll_id)")
-        .eq("session_id", sessionId)
-        .eq("questions.poll_id", pollId);
+        .select("question_id")
+        .eq("session_id", sessionId);
 
-    if (error || !data) return [];
+    if (upvotesError) {
+        throw new Error(`Failed to fetch upvoted question ids: ${upvotesError.message}`);
+    }
 
-    return data.map((row: any) => row.question_id);
+    const questionIds: string[] = (upvotes || []).map(
+        (u: { question_id: string }) => u.question_id
+    );
+
+    if (questionIds.length === 0) {
+        return [];
+    }
+
+    // Step 2: narrow to questions belonging to this poll (no embedded join)
+    const { data: questions, error: questionsError } = await supabase
+        .from("questions")
+        .select("id")
+        .in("id", questionIds)
+        .eq("poll_id", pollId);
+
+    if (questionsError) {
+        throw new Error(`Failed to fetch poll questions: ${questionsError.message}`);
+    }
+
+    return (questions || []).map((q: { id: string }) => q.id);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

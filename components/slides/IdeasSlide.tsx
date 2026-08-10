@@ -34,7 +34,7 @@ export function IdeasSlide({
     const sortedIdeas = [...ideas].sort((a, b) => (b.votes || 0) - (a.votes || 0));
 
     const handleSubmit = async () => {
-        if (!text.trim() || !onSubmitIdea) return;
+        if (!text.trim() || !onSubmitIdea || submitting) return;
         setSubmitting(true);
         try {
             await onSubmitIdea(text.trim());

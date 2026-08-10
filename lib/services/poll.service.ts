@@ -16,8 +16,8 @@ const POLL_TTL_HOURS = parseInt(process.env.POLL_TTL_HOURS || "24");
 const ANONYMOUS_POLL_TTL_HOURS = parseInt(process.env.ANONYMOUS_POLL_TTL_HOURS || "3");
 const POLL_CODE_LENGTH = parseInt(process.env.POLL_CODE_LENGTH || "4");
 
-// Types that require predefined options
-const OPTION_TYPES = ["quiz", "ranking"];
+// Types that require predefined options (rating = multi-item rating: each item must be a persisted option)
+const OPTION_TYPES = ["quiz", "ranking", "rating"];
 // Types that have NO predefined options at creation time
 const FREE_TEXT_TYPES = ["word-cloud", "open-text", "ideas"];
 // Default styles per slide type
@@ -423,10 +423,13 @@ export async function updateActiveSlide(
         throw new Error("Poll not found");
     }
 
-    await supabase
+    const { error: updateError } = await supabase
         .from("polls")
         .update({ active_slide_id: slideId })
         .eq("id", pollData.id);
+    if (updateError?.message) {
+        throw new Error(`Failed to update active slide: ${updateError.message}`);
+    }
 
     // Update in Redis if enabled
     if (redis.enabled) {
@@ -457,10 +460,14 @@ export async function updatePollStatus(
     }
 
     // Update in Supabase
-    await supabase
+    const { error: statusError } = await supabase
         .from("polls")
         .update(updates)
         .eq("id", pollData.id);
+
+    if (statusError?.message) {
+        throw new Error(`Failed to update poll status: ${statusError.message}`);
+    }
 
     // Update in Redis if enabled
     if (redis.enabled) {
@@ -482,11 +489,15 @@ export async function archivePoll(code: string): Promise<void> {
         throw new Error("Poll not found");
     }
 
-    // Mark as archived in Supabase
-    await supabase
+    // Mark as archived in Supabase (status change keeps it out of the active list)
+    const { error: updateError } = await supabase
         .from("polls")
-        .update({ archived_at: new Date().toISOString() })
+        .update({ archived_at: new Date().toISOString(), status: "expired" })
         .eq("id", pollData.id);
+
+    if (updateError) {
+        throw new Error(`Failed to archive poll: ${updateError.message}`);
+    }
 
     // Remove from Redis if enabled
     if (redis.enabled) {
@@ -509,8 +520,63 @@ export async function deletePoll(code: string): Promise<void> {
         throw new Error("Poll not found");
     }
 
-    // Delete from Supabase (cascades to slides, options, votes)
-    await supabase.from("polls").delete().eq("id", pollData.id);
+    const pollId = pollData.id;
+
+    // Clean up slides + their children first (options insert violates FK first,
+    // then votes → participants keyed by slide_id)
+    const { data: slidesToDelete } = await supabase
+        .from("slides")
+        .select("id")
+        .eq("poll_id", pollId);
+
+    const slideIds = (slidesToDelete || []).map((s) => s.id);
+
+    if (slideIds.length > 0) {
+        const { error: votesError } = await supabase
+            .from("votes")
+            .delete()
+            .in("slide_id", slideIds);
+        if (votesError?.message) {
+            throw new Error(`Failed to delete votes: ${votesError.message}`);
+        }
+
+        const { error: participantsError } = await supabase
+            .from("participants")
+            .delete()
+            .in("slide_id", slideIds);
+        if (participantsError?.message) {
+            throw new Error(`Failed to delete participants: ${participantsError.message}`);
+        }
+
+        const { error: optionsError } = await supabase
+            .from("options")
+            .delete()
+            .in("slide_id", slideIds);
+        if (optionsError?.message) {
+            throw new Error(`Failed to delete options: ${optionsError.message}`);
+        }
+
+        const { error: slidesError } = await supabase
+            .from("slides")
+            .delete()
+            .eq("poll_id", pollId);
+        if (slidesError?.message) {
+            throw new Error(`Failed to delete slides: ${slidesError.message}`);
+        }
+    }
+
+    const { error: questionsError } = await supabase
+        .from("questions")
+        .delete()
+        .eq("poll_id", pollId);
+    if (questionsError?.message) {
+        throw new Error(`Failed to delete questions: ${questionsError.message}`);
+    }
+
+    const { error: deleteError } = await supabase.from("polls").delete().eq("id", pollId);
+    if (deleteError?.message) {
+        throw new Error(`Failed to delete poll: ${deleteError.message}`);
+    }
 
     // Remove from Redis if enabled
     if (redis.enabled) {

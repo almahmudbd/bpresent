@@ -8,13 +8,15 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
     if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Check admin
-    const { data: adminData } = await supabase.from("admin_users").select("user_id").eq("user_id", user.id).single();
-    if (!adminData) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
+    // Admin endpoints require the service role key. Check before running the
+    // admin check so a mis-configured env fails fast.
     if (!supabaseAdmin) {
         return NextResponse.json({ error: "Supabase service role key not configured" }, { status: 500 });
     }
+
+    // Check admin
+    const { data: adminData } = await supabaseAdmin.from("admin_users").select("user_id").eq("user_id", user.id).single();
+    if (!adminData) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     try {
         const { action } = await request.json();
@@ -38,8 +40,9 @@ export async function POST(request: NextRequest) {
         }
 
         return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Internal server error";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }
 

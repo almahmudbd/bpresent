@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase as anonSupabase, supabaseAdmin } from "@/lib/supabaseClient";
+import type { CreateSlideInput } from "@/lib/types";
 
 const supabase = supabaseAdmin || anonSupabase;
 
@@ -23,11 +24,20 @@ export async function PUT(
         }
 
         const body = await request.json();
-        const { title, slides } = body;
+        const { title, slides } = body as { title?: string; slides?: CreateSlideInput[] };
+
+        // Only include fields present in the body — a missing field must NOT
+        // overwrite the stored column with null.
+        const updates: { title?: string; slides?: CreateSlideInput[] } = {};
+        if (title !== undefined) updates.title = title;
+        if (slides !== undefined) updates.slides = slides;
+        if (Object.keys(updates).length === 0) {
+            return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+        }
 
         const { data, error } = await supabase
             .from("saved_presentations")
-            .update({ title, slides })
+            .update(updates)
             .eq("id", id)
             .eq("user_id", user.id)
             .select()

@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase, supabaseAdmin } from "@/lib/supabaseClient";
 
+interface AdminUser {
+    id: string;
+    email?: string;
+    created_at?: string;
+    last_sign_in_at?: string;
+}
+
 /**
  * GET /api/admin/users
  * List all users (admin only)
@@ -20,10 +27,15 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Invalid token" }, { status: 401 });
         }
 
-        const db = supabaseAdmin || supabase;
+        // Admin endpoints require the service role key. Check before running the
+        // admin check so a mis-configured env fails fast instead of querying
+        // admin_users with anon privileges.
+        if (!supabaseAdmin) {
+            return NextResponse.json({ error: "Supabase service role key not configured" }, { status: 500 });
+        }
 
         // Check if user is admin (by user_id or email)
-        const { data: adminData } = await db
+        const { data: adminData } = await supabaseAdmin
             .from("admin_users")
             .select("user_id, email")
             .or(`user_id.eq.${user.id},email.eq.${user.email || ""}`)
@@ -31,10 +43,6 @@ export async function GET(request: NextRequest) {
 
         if (!adminData) {
             return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
-        }
-
-        if (!supabaseAdmin) {
-            return NextResponse.json({ error: "Supabase service role key not configured" }, { status: 500 });
         }
 
         // Get all users from auth.users (admin query)
@@ -46,7 +54,7 @@ export async function GET(request: NextRequest) {
 
         // Get poll counts for each user
         const userStats = await Promise.all(
-            users.users.map(async (u) => {
+            users.users.map(async (u: AdminUser) => {
                 // supabaseAdmin is already checked above, but let's be explicit for lint
                 const client = supabaseAdmin!;
 

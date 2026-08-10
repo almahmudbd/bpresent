@@ -63,7 +63,8 @@ async function hasVoted(
             .from("votes")
             .select("*", { count: "exact", head: true })
             .eq("slide_id", slideId)
-            .eq("voter_session_id", sessionId);
+            .eq("voter_session_id", sessionId)
+            .neq("vote_type", "open-text");
         return (count || 0) > 0;
     }
 }
@@ -99,13 +100,15 @@ export async function submitVote(input: VoteInput): Promise<void> {
     const alreadyVoted = await hasVoted(input.code, optionData.slide_id, input.session_id);
     if (alreadyVoted) throw new Error("Already voted on this slide");
 
-    await supabase.rpc("vote_for_option", { option_id: input.option_id });
+    const { error: rpcError } = await supabase.rpc("vote_for_option", { option_id: input.option_id });
+    if (rpcError) throw new Error(`Failed to record vote: ${rpcError.message}`);
 
-    await supabase.from("votes").insert({
+    const { error: insertError } = await supabase.from("votes").insert({
         slide_id: optionData.slide_id,
         option_id: input.option_id,
         voter_session_id: input.session_id,
     });
+    if (insertError) throw new Error(`Failed to record vote: ${insertError.message}`);
 
     await markAsVoted(input.code, optionData.slide_id, input.session_id);
     await trackParticipant(input.code, optionData.slide_id, input.session_id);
@@ -143,7 +146,8 @@ export async function submitWordCloudVote(input: VoteInput): Promise<void> {
 
     if (existingOption) {
         optionId = existingOption.id;
-        await supabase.rpc("vote_for_option", { option_id: existingOption.id });
+        const { error: rpcError } = await supabase.rpc("vote_for_option", { option_id: existingOption.id });
+        if (rpcError) throw new Error(`Failed to record vote: ${rpcError.message}`);
     } else {
         const { data: newOption, error } = await supabase
             .from("options")
@@ -160,12 +164,13 @@ export async function submitWordCloudVote(input: VoteInput): Promise<void> {
         optionId = newOption.id;
     }
 
-    await supabase.from("votes").insert({
+    const { error: insertError } = await supabase.from("votes").insert({
         slide_id: slideId,
         option_id: optionId,
         voter_session_id: input.session_id,
         word_text: input.text.trim(),
     });
+    if (insertError) throw new Error(`Failed to record vote: ${insertError.message}`);
 
     await markAsVoted(input.code, slideId, input.session_id);
     await trackParticipant(input.code, slideId, input.session_id);
@@ -195,11 +200,13 @@ export async function submitOpenTextVote(input: VoteInput): Promise<void> {
 
     if (optErr || !newOption) throw new Error(`Failed to save response: ${optErr?.message}`);
 
-    await supabase.from("votes").insert({
+    const { error: insertError } = await supabase.from("votes").insert({
         slide_id: input.slide_id,
         option_id: newOption.id,
         voter_session_id: input.session_id,
+        vote_type: "open-text",
     });
+    if (insertError) throw new Error(`Failed to save response: ${insertError.message}`);
 
     await trackParticipant(input.code, input.slide_id, input.session_id);
 }
@@ -228,11 +235,12 @@ export async function submitIdea(input: VoteInput): Promise<void> {
 
     if (error || !newOption) throw new Error(`Failed to submit idea: ${error?.message}`);
 
-    await supabase.from("votes").insert({
+    const { error: insertError } = await supabase.from("votes").insert({
         slide_id: input.slide_id,
         option_id: newOption.id,
         voter_session_id: input.session_id,
     });
+    if (insertError) throw new Error(`Failed to submit idea: ${insertError.message}`);
 
     await markAsVoted(input.code, input.slide_id, input.session_id);
     await trackParticipant(input.code, input.slide_id, input.session_id);
@@ -254,13 +262,15 @@ export async function upvoteIdea(
 
     if ((count || 0) > 0) throw new Error("Already upvoted this idea");
 
-    await supabase.rpc("vote_for_option", { option_id: optionId });
+    const { error: rpcError } = await supabase.rpc("vote_for_option", { option_id: optionId });
+    if (rpcError) throw new Error(`Failed to record vote: ${rpcError.message}`);
 
-    await supabase.from("votes").insert({
+    const { error: insertError } = await supabase.from("votes").insert({
         slide_id: slideId,
         option_id: optionId,
         voter_session_id: sessionId,
     });
+    if (insertError) throw new Error(`Failed to record vote: ${insertError.message}`);
 
     await trackParticipant(code, slideId, sessionId);
 }
@@ -281,6 +291,7 @@ export async function submitRatingVote(input: VoteInput): Promise<void> {
             option_id: item.option_id,
             rating_value: item.rating_value,
             voter_session_id: input.session_id,
+            vote_type: "rating" as const,
         }));
         const { error } = await supabase.from("votes").insert(rows);
         if (error) throw new Error(`Failed to submit rating items: ${error.message}`);
@@ -290,6 +301,7 @@ export async function submitRatingVote(input: VoteInput): Promise<void> {
             option_id: input.option_id || null,
             voter_session_id: input.session_id,
             rating_value: input.rating_value,
+            vote_type: "rating" as const,
         });
         if (error) throw new Error(`Failed to submit rating: ${error.message}`);
     } else {
@@ -319,6 +331,7 @@ export async function submitRankingVote(input: VoteInput): Promise<void> {
         option_id: optionId,
         voter_session_id: input.session_id,
         rank_value: index + 1, // 1 = top rank
+        vote_type: "ranking" as const,
     }));
 
     const { error } = await supabase.from("votes").insert(voteRows);
@@ -394,32 +407,39 @@ async function getRatingResults(code: string, slideId: string): Promise<VoteResu
         .select("*")
         .eq("slide_id", slideId);
 
-    const { data: votes } = await supabase
-        .from("votes")
-        .select("option_id, rating_value")
-        .eq("slide_id", slideId)
-        .not("rating_value", "is", null);
-
     const participantCount = await getParticipantCount(code, slideId);
 
     if (options && options.length > 0) {
+        // Multi-item rating: per-option aggregates from the avg_ratings view
+        const { data: avgRows } = await supabase
+            .from("avg_ratings")
+            .select("*")
+            .eq("slide_id", slideId);
+
+        // Overall average computed from the per-rater-deduped view
+        const { data: singleRows } = await supabase
+            .from("avg_ratings_single")
+            .select("avg_rating")
+            .eq("slide_id", slideId);
+
         const optionResults: OptionResult[] = options.map((opt) => {
-            const optVotes = (votes || []).filter((v) => v.option_id === opt.id);
-            const values = optVotes.map((v) => v.rating_value as number);
-            const total = values.length;
-            const avg = total > 0 ? values.reduce((a, b) => a + b, 0) / total : 0;
+            const row = (avgRows || []).find((r) => r.option_id === opt.id);
             return {
                 id: opt.id,
                 text: opt.text,
-                votes: total,
+                votes: Number(row?.rating_count || 0),
                 color: opt.color,
                 percentage: 0,
-                avg_rating: Math.round(avg * 10) / 10,
+                avg_rating: Math.round(Number(row?.avg_rating || 0) * 10) / 10,
             };
         });
 
-        const allValues = (votes || []).map((v) => v.rating_value as number);
-        const overallAvg = allValues.length > 0 ? allValues.reduce((a, b) => a + b, 0) / allValues.length : 0;
+        const overallValues = (singleRows || [])
+            .map((r) => Number(r.avg_rating))
+            .filter((v) => Number.isFinite(v) && v > 0);
+        const overallAvg = overallValues.length > 0
+            ? Math.round((overallValues.reduce((a, b) => a + b, 0) / overallValues.length) * 10) / 10
+            : 0;
 
         return {
             slide_id: slideId,
@@ -427,9 +447,17 @@ async function getRatingResults(code: string, slideId: string): Promise<VoteResu
             options: optionResults,
             total_votes: participantCount,
             participant_count: participantCount,
-            average_rating: Math.round(overallAvg * 10) / 10,
+            average_rating: overallAvg,
         };
     }
+
+    // Single-item rating: raw votes with no option attached
+    const { data: votes } = await supabase
+        .from("votes")
+        .select("option_id, rating_value")
+        .eq("slide_id", slideId)
+        .is("option_id", null)
+        .not("rating_value", "is", null);
 
     const values = (votes || []).map((v) => v.rating_value as number);
     const total = values.length;
@@ -544,7 +572,8 @@ export async function getVotedSlideIds(
             .from("votes")
             .select("slide_id")
             .eq("voter_session_id", sessionId)
-            .in("slide_id", slideIds);
+            .in("slide_id", slideIds)
+            .neq("vote_type", "open-text");
         if (!votes) return [];
         return [...new Set(votes.map((v) => v.slide_id))];
     }

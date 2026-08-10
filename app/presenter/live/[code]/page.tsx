@@ -381,6 +381,24 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     }
 
     const totalVotes = activeSlide.options.reduce((sum, opt) => sum + opt.vote_count, 0);
+
+    // rating / open-text slides never increment vote_count, so derive their
+    // result totals from the enriched result data (poll.service) instead
+    const resultsTotalVotes = (() => {
+        if (activeSlide.type === "rating") {
+            const dist = activeSlide.ratingDistribution;
+            if (dist && Object.keys(dist).length > 0) {
+                return Object.values(dist).reduce((sum, count) => sum + count, 0);
+            }
+            return totalVotes;
+        }
+        if (activeSlide.type === "open-text") {
+            // each open-text response is stored as its own option row
+            return activeSlide.options.length;
+        }
+        return totalVotes;
+    })();
+
     const activeIndex = poll.slides.findIndex(s => s.id === activeSlide.id);
     const theme = THEMES[currentTheme];
     const isLive = activeSlide.id === liveSlideId;
@@ -654,7 +672,7 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                                 hasVoted={true}
                                 isPresenterView={true}
                                 averageRating={activeSlide.averageRating}
-                                totalVotes={totalVotes}
+                                totalVotes={resultsTotalVotes}
                                 ratingDistribution={activeSlide.ratingDistribution}
                             />
                         </div>
@@ -696,7 +714,7 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                     <div className="flex items-center gap-6">
                         <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100 text-gray-600">
                             <Users className="w-5 h-5" />
-                            <span className="text-xl font-bold text-gray-900">{totalVotes}</span>
+                            <span className="text-xl font-bold text-gray-900">{resultsTotalVotes}</span>
                             <span className="text-sm font-medium">responses</span>
                         </div>
 

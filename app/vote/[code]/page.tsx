@@ -25,6 +25,7 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [votedSlides, setVotedSlides] = useState<Set<string>>(new Set());
+    const [upvotedIdeaIds, setUpvotedIdeaIds] = useState<Set<string>>(new Set());
     const [text, setText] = useState("");
     const [viewingLive, setViewingLive] = useState(true);
     const [isCompleted, setIsCompleted] = useState(false);
@@ -183,6 +184,11 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         const response = await submitVoteAPI({ slide_id: activeSlide.id, idea_option_id: optionId });
         const data = await response.json();
         if (!data.success && !data.error?.includes("Already")) throw new Error(data.error);
+        setUpvotedIdeaIds((prev) => {
+            const next = new Set(prev);
+            next.add(optionId);
+            return next;
+        });
         await fetchPollData(true);
     };
 
@@ -301,6 +307,7 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
                         ideas={optionResults}
                         onSubmitIdea={handleIdeaSubmit}
                         onUpvote={handleIdeaUpvote}
+                        userUpvotedIds={upvotedIdeaIds}
                     />
                 );
 

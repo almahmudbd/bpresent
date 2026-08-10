@@ -275,9 +275,17 @@ export default function AdminPage() {
 
     const archivePoll = async (code: string) => {
         if (!confirm("Archive this poll? Voters will no longer be able to join.")) return;
-        const { error } = await supabase.from("polls").update({ archived_at: new Date().toISOString(), status: 'expired' }).eq("code", code);
-        if (error) alert(error.message);
-        else loadPolls((await supabase.auth.getSession()).data.session?.access_token || "");
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const res = await fetch("/api/admin/polls", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "archive", code }),
+        });
+        const data = await res.json();
+        if (!res.ok) { alert(data.error || "Failed to archive poll"); return; }
+        alert("Poll archived");
+        loadPolls(session.access_token);
     };
 
     return (
@@ -354,7 +362,7 @@ export default function AdminPage() {
                                                 <p className="font-semibold mb-1">How to fix:</p>
                                                 <ol className="list-decimal ml-4 space-y-1">
                                                     <li>Go to the SQL Editor in Supabase</li>
-                                                    <li>Run: <code className="bg-slate-800 text-slate-100 px-1.5 py-0.5 rounded ml-1">SELECT grant_admin_access(&apos;{admins.find(a => a.email === admins.find(a => true)?.email)?.email || "your-email"}@example.com&apos;);</code> (Replace with your actual email)</li>
+                                                    <li>Run: <code className="bg-slate-800 text-slate-100 px-1.5 py-0.5 rounded ml-1">SELECT grant_admin_access(&apos;{currentSessionUser?.email || "your-email@example.com"}&apos;);</code> (Replace with your actual email)</li>
                                                     <li>Refresh this page.</li>
                                                 </ol>
                                             </div>
