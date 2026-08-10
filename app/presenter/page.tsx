@@ -135,29 +135,19 @@ export default function PresenterDashboard() {
         newSlides[index].type = newType;
         newSlides[index].options = defaultOptions(newType);
         newSlides[index].style = defaultStyle(newType);
-        if (newType !== "survey") newSlides[index].groupId = undefined;
         setSlides(newSlides);
         setShowTypePicker(null);
     };
 
-    const addSlide = (groupId?: string) => {
+    const addSlide = () => {
         const newSlide: SlideState = {
             id: crypto.randomUUID(),
             question: "",
-            type: groupId ? "survey" : "quiz",
-            options: groupId ? [] : ["", ""],
-            style: groupId ? "list" : "donut",
-            groupId,
+            type: "quiz",
+            options: ["", ""],
+            style: "donut",
         };
-        if (groupId) {
-            // Insert after last slide of this group
-            const lastGroupIdx = slides.reduce((last, s, i) => s.groupId === groupId ? i : last, -1);
-            const newSlides = [...slides];
-            newSlides.splice(lastGroupIdx + 1, 0, newSlide);
-            setSlides(newSlides);
-        } else {
-            setSlides([...slides, newSlide]);
-        }
+        setSlides([...slides, newSlide]);
     };
 
     const removeSlide = (index: number) => {
