@@ -619,26 +619,68 @@ export default function AdminPage() {
                                     <div className="space-y-6">
                                         <div>
                                             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Recent Polls</h3>
-                                            <div className="space-y-2">
-                                                {userPolls.slice(0, 5).map(p => (
-                                                    <div key={p.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                                                        <p className="text-sm font-medium text-slate-800 truncate">{p.title || p.code}</p>
-                                                        <p className="text-[10px] text-slate-500 mt-1">{new Date(p.created_at).toLocaleDateString()} • {p.status}</p>
-                                                    </div>
-                                                ))}
+                                            <div className="space-y-3">
+                                                {userPolls.slice(0, 5).map(p => {
+                                                    const pollSlides = Array.isArray(p.slides) ? p.slides : [];
+                                                    return (
+                                                        <div key={p.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                                                            <div className="flex justify-between items-center mb-1">
+                                                                <p className="text-sm font-bold text-slate-800 truncate">{p.title || p.code}</p>
+                                                                <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-extrabold rounded-full">
+                                                                    {pollSlides.length} {pollSlides.length === 1 ? "Slide" : "Slides"}
+                                                                </span>
+                                                            </div>
+                                                            <div className="space-y-1 bg-white p-2 rounded-lg border border-slate-100 mb-2">
+                                                                {pollSlides.length === 0 ? (
+                                                                    <p className="text-[10px] text-slate-400 italic">No slides.</p>
+                                                                ) : (
+                                                                    pollSlides.map((s: any, idx: number) => (
+                                                                        <div key={idx} className="text-[11px] flex items-center gap-1.5 text-slate-600">
+                                                                            <span className="font-bold text-indigo-600">Q{idx + 1}:</span>
+                                                                            <span className="font-semibold text-[9px] uppercase px-1 bg-slate-100 rounded text-slate-500">{s.type || "quiz"}</span>
+                                                                            <span className="truncate">{s.question}</span>
+                                                                        </div>
+                                                                    ))
+                                                                )}
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500 font-medium">{new Date(p.created_at).toLocaleDateString()} • {p.status}</p>
+                                                        </div>
+                                                    );
+                                                })}
                                                 {userPolls.length === 0 && <p className="text-sm text-slate-400 italic">No polls found.</p>}
                                             </div>
                                         </div>
 
                                         <div>
-                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Templates</h3>
-                                            <div className="space-y-2">
-                                                {userPresentations.slice(0, 5).map(pr => (
-                                                    <div key={pr.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                                                        <p className="text-sm font-medium text-slate-800 truncate">{pr.title}</p>
-                                                        <p className="text-[10px] text-slate-500 mt-1">Saved on {new Date(pr.created_at).toLocaleDateString()}</p>
-                                                    </div>
-                                                ))}
+                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Saved Presentation Templates</h3>
+                                            <div className="space-y-3">
+                                                {userPresentations.slice(0, 5).map(pr => {
+                                                    const prSlides = Array.isArray(pr.slides) ? (pr.slides as any[]) : [];
+                                                    return (
+                                                        <div key={pr.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                                                            <div className="flex justify-between items-center mb-2">
+                                                                <p className="text-sm font-bold text-slate-800 truncate">{pr.title}</p>
+                                                                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-extrabold rounded-full">
+                                                                    {prSlides.length} {prSlides.length === 1 ? "Slide" : "Slides"}
+                                                                </span>
+                                                            </div>
+                                                            <div className="space-y-1 bg-white p-2 rounded-lg border border-slate-100 mb-2">
+                                                                {prSlides.length === 0 ? (
+                                                                    <p className="text-[10px] text-slate-400 italic">No slides saved.</p>
+                                                                ) : (
+                                                                    prSlides.map((s, idx) => (
+                                                                        <div key={idx} className="text-[11px] flex items-center gap-1.5 text-slate-600">
+                                                                            <span className="font-bold text-indigo-600">Q{idx + 1}:</span>
+                                                                            <span className="font-semibold text-[9px] uppercase px-1 bg-slate-100 rounded text-slate-500">{s.type || "quiz"}</span>
+                                                                            <span className="truncate">{s.question}</span>
+                                                                        </div>
+                                                                    ))
+                                                                )}
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-400 font-medium">Saved on {new Date(pr.created_at).toLocaleDateString()}</p>
+                                                        </div>
+                                                    );
+                                                })}
                                                 {userPresentations.length === 0 && <p className="text-sm text-slate-400 italic">No templates found.</p>}
                                             </div>
                                         </div>

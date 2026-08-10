@@ -232,6 +232,7 @@ export async function submitIdea(input: VoteInput): Promise<void> {
         voter_session_id: input.session_id,
     });
 
+    await markAsVoted(input.code, input.slide_id, input.session_id);
     await trackParticipant(input.code, input.slide_id, input.session_id);
 }
 

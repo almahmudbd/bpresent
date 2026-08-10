@@ -134,35 +134,65 @@ export default function MyPresentationsPage() {
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {presentations.map((presentation) => (
-                            <div
-                                key={presentation.id}
-                                className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all"
-                            >
-                                <h3 className="text-lg font-semibold text-gray-900 mb-2 truncate">
-                                    {presentation.title}
-                                </h3>
-                                <div className="text-sm text-gray-500 space-y-1 mb-4">
-                                    <p>Created: {format(new Date(presentation.created_at), "MMM d, yyyy")}</p>
-                                    <p>Updated: {format(new Date(presentation.updated_at), "MMM d, yyyy")}</p>
+                        {presentations.map((presentation) => {
+                            const slidesList = Array.isArray(presentation.slides) ? (presentation.slides as any[]) : [];
+                            return (
+                                <div
+                                    key={presentation.id}
+                                    className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl transition-all flex flex-col justify-between"
+                                >
+                                    <div>
+                                        <div className="flex justify-between items-start mb-3 gap-2">
+                                            <h3 className="text-lg font-bold text-gray-900 truncate">
+                                                {presentation.title}
+                                            </h3>
+                                            <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-extrabold rounded-full border border-indigo-100 flex-shrink-0">
+                                                {slidesList.length} {slidesList.length === 1 ? "Slide" : "Slides"}
+                                            </span>
+                                        </div>
+
+                                        {/* Slide Preview List */}
+                                        <div className="space-y-2 mb-4 bg-slate-50/80 p-3 rounded-xl border border-slate-100 max-h-48 overflow-y-auto">
+                                            {slidesList.length === 0 ? (
+                                                <p className="text-xs text-gray-400 italic">No slides in this presentation.</p>
+                                            ) : (
+                                                slidesList.map((slide, sIdx) => (
+                                                    <div key={sIdx} className="text-xs flex items-center gap-2 text-gray-700">
+                                                        <span className="font-bold text-indigo-600 min-w-5">Q{sIdx + 1}</span>
+                                                        <span className="px-1.5 py-0.5 bg-gray-200/60 rounded text-[10px] font-semibold text-gray-600 uppercase">
+                                                            {slide.type || "quiz"}
+                                                        </span>
+                                                        <span className="truncate flex-1 font-medium">{slide.question || "Untitled question"}</span>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+
+                                        <div className="text-xs text-gray-400 space-y-0.5 mb-4 font-medium">
+                                            <p>Created: {format(new Date(presentation.created_at), "MMM d, yyyy")}</p>
+                                            <p>Updated: {format(new Date(presentation.updated_at), "MMM d, yyyy")}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2 pt-2 border-t border-gray-100">
+                                        <button
+                                            onClick={() => handleEdit(presentation)}
+                                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors font-bold text-sm"
+                                        >
+                                            <Edit className="w-4 h-4" />
+                                            Edit Slides
+                                        </button>
+                                        <button
+                                            onClick={() => handleDelete(presentation.id)}
+                                            className="px-3.5 py-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors"
+                                            title="Delete Presentation"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => handleEdit(presentation)}
-                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors font-medium"
-                                    >
-                                        <Edit className="w-4 h-4" />
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(presentation.id)}
-                                        className="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>

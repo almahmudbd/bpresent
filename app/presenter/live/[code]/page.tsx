@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon, Plus, Clock, MessageCircleQuestion, Pin } from "lucide-react";
+import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon, Plus, Clock, MessageCircleQuestion, Pin, BarChart3, MessageSquare, AlignLeft, Lightbulb, ArrowUpDown, Star } from "lucide-react";
 import { formatTimeRemaining } from "@/lib/timeUtils";
 import { type PollWithSlides, type SlideWithOptions, type SlideType } from "@/lib/types";
 import { QRCodeSVG } from "qrcode.react";
@@ -513,9 +513,37 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
             {/* Main Content */}
             <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col">
                 <div className="flex justify-between items-start mb-8">
-                    <h1 className="text-4xl md:text-5xl font-bold text-gray-900 leading-tight max-w-4xl">
-                        {activeSlide.question}
-                    </h1>
+                    <div>
+                        {/* Slide Type Badge */}
+                        <div className="flex items-center gap-2 mb-3">
+                            {(() => {
+                                const getBadge = (t: SlideType, s?: string) => {
+                                    switch (t) {
+                                        case "quiz": return { label: "Multiple Choice", icon: <BarChart3 className="w-3.5 h-3.5" />, color: "bg-indigo-50 text-indigo-700 border-indigo-200" };
+                                        case "word-cloud": return { label: "Word Cloud", icon: <MessageSquare className="w-3.5 h-3.5" />, color: "bg-sky-50 text-sky-700 border-sky-200" };
+                                        case "open-text": return { label: "Open Text", icon: <AlignLeft className="w-3.5 h-3.5" />, color: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+                                        case "ideas": return { label: "Ideas", icon: <Lightbulb className="w-3.5 h-3.5" />, color: "bg-amber-50 text-amber-700 border-amber-200" };
+                                        case "ranking": return { label: "Ranking", icon: <ArrowUpDown className="w-3.5 h-3.5" />, color: "bg-purple-50 text-purple-700 border-purple-200" };
+                                        case "rating": return { label: s === "scale" ? "Rating (Scale 1–10)" : "Rating (Stars 1–5)", icon: <Star className="w-3.5 h-3.5" />, color: "bg-rose-50 text-rose-700 border-rose-200" };
+                                        default: return { label: "Poll Slide", icon: <BarChart3 className="w-3.5 h-3.5" />, color: "bg-gray-50 text-gray-700 border-gray-200" };
+                                    }
+                                };
+                                const badge = getBadge(activeSlide.type, activeSlide.style);
+                                return (
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 border ${badge.color} rounded-full text-xs font-extrabold uppercase tracking-wider shadow-sm`}>
+                                        {badge.icon}
+                                        {badge.label}
+                                    </span>
+                                );
+                            })()}
+                            <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">
+                                Slide {poll.slides.findIndex((s) => s.id === activeSlide.id) + 1} of {poll.slides.length}
+                            </span>
+                        </div>
+                        <h1 className="text-4xl md:text-5xl font-bold text-gray-900 leading-tight max-w-4xl">
+                            {activeSlide.question}
+                        </h1>
+                    </div>
 
                     {/* Mode Indicator */}
                     <div className="flex flex-col items-end gap-2">

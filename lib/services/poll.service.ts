@@ -227,6 +227,84 @@ export async function createPoll(
     };
 }
 
+async function enrichSlidesWithOptions(slidesData: any[], optionsData: any[]): Promise<SlideWithOptions[]> {
+    if (!slidesData || slidesData.length === 0) return [];
+    const slideIds = slidesData.map((s) => s.id);
+
+    const { data: votesData } = await supabase
+        .from("votes")
+        .select("slide_id, option_id, rank_value, rating_value")
+        .in("slide_id", slideIds);
+
+    const votes = votesData || [];
+
+    return slidesData.map((slide) => {
+        const rawOptions = optionsData?.filter((o) => o.slide_id === slide.id) || [];
+
+        if (slide.type === "ranking") {
+            const slideVotes = votes.filter((v) => v.slide_id === slide.id && v.rank_value !== null && v.rank_value !== undefined);
+            const rankSums: Record<string, number> = {};
+            const rankCounts: Record<string, number> = {};
+
+            slideVotes.forEach((v) => {
+                if (!v.option_id) return;
+                rankSums[v.option_id] = (rankSums[v.option_id] || 0) + (v.rank_value || 0);
+                rankCounts[v.option_id] = (rankCounts[v.option_id] || 0) + 1;
+            });
+
+            const options = rawOptions.map((opt) => {
+                const count = rankCounts[opt.id] || 0;
+                const sum = rankSums[opt.id] || 0;
+                const avg_rank = count > 0 ? Math.round((sum / count) * 10) / 10 : undefined;
+                return { ...opt, avg_rank };
+            });
+
+            return { ...slide, options };
+        }
+
+        if (slide.type === "rating") {
+            const slideVotes = votes.filter((v) => v.slide_id === slide.id && v.rating_value !== null && v.rating_value !== undefined);
+
+            if (rawOptions.length > 0) {
+                const options = rawOptions.map((opt) => {
+                    const optVotes = slideVotes.filter((v) => v.option_id === opt.id);
+                    const values = optVotes.map((v) => v.rating_value as number);
+                    const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : undefined;
+                    const avg_rating = avg !== undefined ? Math.round(avg * 10) / 10 : undefined;
+                    return { ...opt, avg_rating };
+                });
+
+                const allValues = slideVotes.map((v) => v.rating_value as number);
+                const overallAvg = allValues.length > 0 ? Math.round((allValues.reduce((a, b) => a + b, 0) / allValues.length) * 10) / 10 : undefined;
+
+                return {
+                    ...slide,
+                    options,
+                    averageRating: overallAvg,
+                };
+            }
+
+            const values = slideVotes.map((v) => v.rating_value as number);
+            const total = values.length;
+            const avg = total > 0 ? Math.round((values.reduce((a, b) => a + b, 0) / total) * 10) / 10 : undefined;
+
+            const distribution: Record<number, number> = {};
+            values.forEach((v) => {
+                distribution[v] = (distribution[v] || 0) + 1;
+            });
+
+            return {
+                ...slide,
+                options: [],
+                averageRating: avg,
+                ratingDistribution: distribution,
+            };
+        }
+
+        return { ...slide, options: rawOptions };
+    });
+}
+
 /**
  * Get poll data from Redis (fast) or Supabase (fallback)
  */
@@ -272,10 +350,7 @@ export async function getPoll(code: string): Promise<PollWithSlides | null> {
                 .select("*")
                 .in("slide_id", slideIds);
 
-            const slidesWithOptions: SlideWithOptions[] = slidesData.map((slide) => ({
-                ...slide,
-                options: optionsData?.filter((o) => o.slide_id === slide.id) || [],
-            }));
+            const slidesWithOptions = await enrichSlidesWithOptions(slidesData, optionsData || []);
 
             return {
                 ...pollData,
@@ -322,10 +397,7 @@ export async function getPoll(code: string): Promise<PollWithSlides | null> {
         .select("*")
         .in("slide_id", slideIds);
 
-    const slidesWithOptions: SlideWithOptions[] = slidesData.map((slide) => ({
-        ...slide,
-        options: optionsData?.filter((o) => o.slide_id === slide.id) || [],
-    }));
+    const slidesWithOptions = await enrichSlidesWithOptions(slidesData, optionsData || []);
 
     return {
         ...pollData,

@@ -36,10 +36,10 @@ export async function GET(
             return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
         }
 
-        // Get user's polls
+        // Get user's polls with slides
         const { data: polls, error: pollsError } = await supabase
             .from("polls")
-            .select("*")
+            .select("*, slides(*)")
             .eq("user_id", id)
             .order("created_at", { ascending: false });
 
