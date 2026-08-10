@@ -43,6 +43,7 @@ export function RatingSlide({
     const [itemRatings, setItemRatings] = useState<Record<string, number>>({});
     const [submitting, setSubmitting] = useState(false);
 
+    const maxRating = style === "stars" ? 5 : 10;
     const validOptions = options ? options.filter((o) => o.text && o.text.trim().length > 0) : [];
     const hasMultipleItems = validOptions.length > 0;
 
