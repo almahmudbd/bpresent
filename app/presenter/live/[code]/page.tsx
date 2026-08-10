@@ -342,57 +342,6 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
         }
     };
 
-    const handleAddSlide = async () => {
-        if (!newQuestion.trim()) return;
-        if (newSlideType === "quiz" && newOptions.some(opt => !opt.trim())) return;
-
-        setIsAddingSlide(true);
-        try {
-            const body: any = {
-                code,
-                type: newSlideType,
-                question: newQuestion,
-            };
-
-            if (newSlideType === "quiz") {
-                body.options = newOptions.filter(o => o.trim());
-                body.style = "bar"; // Default style for quick add
-            } else {
-                body.style = "cloud";
-            }
-
-            const { data: { session } } = await supabase.auth.getSession();
-            const headers: HeadersInit = { "Content-Type": "application/json" };
-            if (session?.access_token) {
-                headers["Authorization"] = `Bearer ${session.access_token}`;
-            }
-
-            const response = await fetch("/api/poll/slide", {
-                method: "POST",
-                headers,
-                body: JSON.stringify(body),
-            });
-
-            const data = await response.json();
-            if (response.ok) {
-                // Refresh data
-                await fetchPollData();
-                setShowAddModal(false);
-                setNewQuestion("");
-                setNewOptions(["", ""]);
-                // Optional: Navigate to new slide?
-                // The new slide is appended. 
-                // We could navigateSlide(poll.slides.length but need updated poll first)
-            } else {
-                alert(data.error || "Failed to add slide");
-            }
-        } catch (error) {
-            console.error("Failed to add slide", error);
-        } finally {
-            setIsAddingSlide(false);
-        }
-    };
-
     if (showThankYou) {
         return (
             <div className={`min-h-screen ${THEMES[currentTheme].bgGradient} p-6 flex flex-col`}>

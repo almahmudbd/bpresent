@@ -59,3 +59,5 @@ next-env.d.ts
 
 AGENT.md
 CLAUDE.md
+/.vscode
+.mcp.json
