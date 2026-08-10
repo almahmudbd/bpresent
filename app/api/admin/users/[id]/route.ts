@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase as anonSupabase, supabaseAdmin } from "@/lib/supabaseClient";
 
 /**
  * GET /api/admin/users/[id]
@@ -19,32 +19,34 @@ export async function GET(
         }
 
         const token = authHeader.split("Bearer ")[1];
-        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        const { data: { user }, error: authError } = await anonSupabase.auth.getUser(token);
 
         if (authError || !user) {
             return NextResponse.json({ error: "Invalid token" }, { status: 401 });
         }
 
-        // Check if user is admin
-        const { data: adminData } = await supabase
+        const db = supabaseAdmin || anonSupabase;
+
+        // Check if user is admin (by user_id or email)
+        const { data: adminData } = await db
             .from("admin_users")
-            .select("user_id")
-            .eq("user_id", user.id)
-            .single();
+            .select("user_id, email")
+            .or(`user_id.eq.${user.id},email.eq.${user.email || ""}`)
+            .maybeSingle();
 
         if (!adminData) {
             return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
         }
 
         // Get user's polls with slides
-        const { data: polls, error: pollsError } = await supabase
+        const { data: polls } = await db
             .from("polls")
             .select("*, slides(*)")
             .eq("user_id", id)
             .order("created_at", { ascending: false });
 
         // Get user's presentations
-        const { data: presentations, error: presentationsError } = await supabase
+        const { data: presentations } = await db
             .from("saved_presentations")
             .select("*")
             .eq("user_id", id)

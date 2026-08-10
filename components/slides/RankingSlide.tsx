@@ -27,12 +27,18 @@ export function RankingSlide({
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [submitting, setSubmitting] = useState(false);
 
+    // Sync order when options prop changes or finishes loading
+    if (order.length === 0 && options.length > 0) {
+        setOrder([...options]);
+    }
+
     const handleDragStart = (index: number) => setDragIndex(index);
 
     const handleDragOver = (e: React.DragEvent, index: number) => {
         e.preventDefault();
-        if (dragIndex === null || dragIndex === index) return;
-        const newOrder = [...order];
+        const currentOrder = order.length > 0 ? order : options;
+        if (dragIndex === null || dragIndex === index || currentOrder.length === 0) return;
+        const newOrder = [...currentOrder];
         const [moved] = newOrder.splice(dragIndex, 1);
         newOrder.splice(index, 0, moved);
         setOrder(newOrder);
@@ -42,10 +48,11 @@ export function RankingSlide({
     const handleDragEnd = () => setDragIndex(null);
 
     const handleSubmit = async () => {
-        if (!onSubmit) return;
+        const currentOrder = order.length > 0 ? order : options;
+        if (!onSubmit || currentOrder.length === 0) return;
         setSubmitting(true);
         try {
-            await onSubmit(order.map((o) => o.id));
+            await onSubmit(currentOrder.map((o) => o.id));
         } finally {
             setSubmitting(false);
         }

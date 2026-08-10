@@ -1,6 +1,8 @@
 import { redis } from "@/lib/redis";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase as anonSupabase, supabaseAdmin } from "@/lib/supabaseClient";
 import { type VoteInput, type VoteResults, type OptionResult, type TextResponse } from "@/lib/types";
+
+const supabase = supabaseAdmin || anonSupabase;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Participant tracking

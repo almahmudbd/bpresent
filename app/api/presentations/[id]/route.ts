@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase as anonSupabase, supabaseAdmin } from "@/lib/supabaseClient";
+
+const supabase = supabaseAdmin || anonSupabase;
 
 // PUT /api/presentations/[id] - Update existing presentation
 export async function PUT(
@@ -14,7 +16,7 @@ export async function PUT(
         }
 
         const token = authHeader.replace("Bearer ", "");
-        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        const { data: { user }, error: authError } = await anonSupabase.auth.getUser(token);
 
         if (authError || !user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -53,7 +55,7 @@ export async function DELETE(
         }
 
         const token = authHeader.replace("Bearer ", "");
-        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        const { data: { user }, error: authError } = await anonSupabase.auth.getUser(token);
 
         if (authError || !user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

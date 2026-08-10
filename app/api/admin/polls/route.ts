@@ -20,19 +20,17 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Invalid token" }, { status: 401 });
         }
 
-        // Check if user is admin
-        const { data: adminData } = await supabase
+        const db = supabaseAdmin || supabase;
+
+        // Check if user is admin (by user_id or email)
+        const { data: adminData } = await db
             .from("admin_users")
-            .select("user_id")
-            .eq("user_id", user.id)
-            .single();
+            .select("user_id, email")
+            .or(`user_id.eq.${user.id},email.eq.${user.email || ""}`)
+            .maybeSingle();
 
         if (!adminData) {
             return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
-        }
-
-        if (!supabaseAdmin) {
-            return NextResponse.json({ error: "Supabase service role key not configured" }, { status: 500 });
         }
 
         // Get status filter from query params
