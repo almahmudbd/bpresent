@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase as anonSupabase, supabaseAdmin } from "@/lib/supabaseClient";
 
+const supabase = supabaseAdmin || anonSupabase;
+
 /**
  * GET /api/admin/users/[id]
  * Get specific user data (admin only)
@@ -25,10 +27,8 @@ export async function GET(
             return NextResponse.json({ error: "Invalid token" }, { status: 401 });
         }
 
-        const db = supabaseAdmin || anonSupabase;
-
         // Check if user is admin (by user_id or email)
-        const { data: adminData } = await db
+        const { data: adminData } = await supabase
             .from("admin_users")
             .select("user_id, email")
             .or(`user_id.eq.${user.id},email.eq.${user.email || ""}`)
@@ -39,14 +39,14 @@ export async function GET(
         }
 
         // Get user's polls with slides
-        const { data: polls } = await db
+        const { data: polls } = await supabase
             .from("polls")
             .select("*, slides(*)")
             .eq("user_id", id)
             .order("created_at", { ascending: false });
 
         // Get user's presentations
-        const { data: presentations } = await db
+        const { data: presentations } = await supabase
             .from("saved_presentations")
             .select("*")
             .eq("user_id", id)
@@ -80,7 +80,7 @@ export async function DELETE(
         }
 
         const token = authHeader.split("Bearer ")[1];
-        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        const { data: { user }, error: authError } = await anonSupabase.auth.getUser(token);
 
         if (authError || !user) {
             return NextResponse.json({ error: "Invalid token" }, { status: 401 });
@@ -89,9 +89,9 @@ export async function DELETE(
         // Check if user is admin
         const { data: adminData } = await supabase
             .from("admin_users")
-            .select("user_id")
-            .eq("user_id", user.id)
-            .single();
+            .select("user_id, email")
+            .or(`user_id.eq.${user.id},email.eq.${user.email || ""}`)
+            .maybeSingle();
 
         if (!adminData) {
             return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
@@ -102,8 +102,12 @@ export async function DELETE(
             return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 });
         }
 
+        if (!supabaseAdmin) {
+            return NextResponse.json({ error: "Supabase service role key not configured" }, { status: 500 });
+        }
+
         // Delete user from auth (cascades to all related data via foreign keys)
-        const { error: deleteError } = await supabase.auth.admin.deleteUser(id);
+        const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(id);
 
         if (deleteError) {
             return NextResponse.json({ error: deleteError.message }, { status: 500 });
