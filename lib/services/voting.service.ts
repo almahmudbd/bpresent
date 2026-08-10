@@ -267,17 +267,31 @@ export async function upvoteIdea(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function submitRatingVote(input: VoteInput): Promise<void> {
-    if (input.rating_value === undefined) throw new Error("rating_value is required");
     if (!input.slide_id) throw new Error("slide_id is required for rating");
 
     const alreadyVoted = await hasVoted(input.code, input.slide_id, input.session_id);
     if (alreadyVoted) throw new Error("Already rated this slide");
 
-    await supabase.from("votes").insert({
-        slide_id: input.slide_id,
-        voter_session_id: input.session_id,
-        rating_value: input.rating_value,
-    });
+    if (input.rating_items && input.rating_items.length > 0) {
+        const rows = input.rating_items.map((item) => ({
+            slide_id: input.slide_id!,
+            option_id: item.option_id,
+            rating_value: item.rating_value,
+            voter_session_id: input.session_id,
+        }));
+        const { error } = await supabase.from("votes").insert(rows);
+        if (error) throw new Error(`Failed to submit rating items: ${error.message}`);
+    } else if (input.rating_value !== undefined) {
+        const { error } = await supabase.from("votes").insert({
+            slide_id: input.slide_id,
+            option_id: input.option_id || null,
+            voter_session_id: input.session_id,
+            rating_value: input.rating_value,
+        });
+        if (error) throw new Error(`Failed to submit rating: ${error.message}`);
+    } else {
+        throw new Error("rating_value or rating_items is required");
+    }
 
     await markAsVoted(input.code, input.slide_id, input.session_id);
     await trackParticipant(input.code, input.slide_id, input.session_id);
@@ -372,11 +386,47 @@ export async function getVoteResults(
 }
 
 async function getRatingResults(code: string, slideId: string): Promise<VoteResults> {
+    const { data: options } = await supabase
+        .from("options")
+        .select("*")
+        .eq("slide_id", slideId);
+
     const { data: votes } = await supabase
         .from("votes")
-        .select("rating_value")
+        .select("option_id, rating_value")
         .eq("slide_id", slideId)
         .not("rating_value", "is", null);
+
+    const participantCount = await getParticipantCount(code, slideId);
+
+    if (options && options.length > 0) {
+        const optionResults: OptionResult[] = options.map((opt) => {
+            const optVotes = (votes || []).filter((v) => v.option_id === opt.id);
+            const values = optVotes.map((v) => v.rating_value as number);
+            const total = values.length;
+            const avg = total > 0 ? values.reduce((a, b) => a + b, 0) / total : 0;
+            return {
+                id: opt.id,
+                text: opt.text,
+                votes: total,
+                color: opt.color,
+                percentage: 0,
+                avg_rating: Math.round(avg * 10) / 10,
+            };
+        });
+
+        const allValues = (votes || []).map((v) => v.rating_value as number);
+        const overallAvg = allValues.length > 0 ? allValues.reduce((a, b) => a + b, 0) / allValues.length : 0;
+
+        return {
+            slide_id: slideId,
+            type: "rating",
+            options: optionResults,
+            total_votes: participantCount,
+            participant_count: participantCount,
+            average_rating: Math.round(overallAvg * 10) / 10,
+        };
+    }
 
     const values = (votes || []).map((v) => v.rating_value as number);
     const total = values.length;
@@ -392,7 +442,7 @@ async function getRatingResults(code: string, slideId: string): Promise<VoteResu
         type: "rating",
         options: [],
         total_votes: total,
-        participant_count: await getParticipantCount(code, slideId),
+        participant_count: participantCount,
         average_rating: Math.round(avg * 10) / 10,
         rating_distribution: distribution,
     };

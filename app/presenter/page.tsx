@@ -45,21 +45,21 @@ const SLIDE_TYPES: { type: SlideType; label: string; icon: React.ReactNode; desc
     { type: "ideas",      label: "Ideas",           icon: <Lightbulb size={18} />,        description: "Participants submit & upvote ideas" },
     { type: "ranking",    label: "Ranking",         icon: <ArrowUpDown size={18} />,      description: "Drag-and-drop to rank a list of items" },
     { type: "rating",     label: "Rating",          icon: <Star size={18} />,             description: "Star rating (1–5) or numeric scale (1–10)" },
-    { type: "survey",     label: "Survey",          icon: <ClipboardList size={18} />,    description: "Group of questions presented together" },
 ];
 
-const OPTIONS_TYPES: SlideType[] = ["quiz", "ranking"];
+const OPTIONS_TYPES: SlideType[] = ["quiz", "ranking", "rating"];
 const NO_OPTIONS_TYPES: SlideType[] = ["word-cloud", "open-text", "ideas"];
 
 function defaultOptions(type: SlideType): string[] {
-    if (OPTIONS_TYPES.includes(type)) return ["", ""];
+    if (type === "quiz" || type === "ranking") return ["", ""];
+    if (type === "rating") return []; // rating optional items
     return [];
 }
 
 function defaultStyle(type: SlideType): SlideStyle | undefined {
     const map: Partial<Record<SlideType, SlideStyle>> = {
         "quiz": "donut", "word-cloud": "cloud", "open-text": "list",
-        "ideas": "list", "ranking": "horizontal-bar", "rating": "stars", "survey": "list",
+        "ideas": "list", "ranking": "horizontal-bar", "rating": "stars",
     };
     return map[type];
 }
@@ -268,13 +268,47 @@ export default function PresenterDashboard() {
 
     const createPoll = async () => {
         if (slides.some((s) => !s.question.trim())) return;
-        if (slides.some((s) => OPTIONS_TYPES.includes(s.type) && s.options.some((o) => !o.trim()))) return;
 
         setLoading(true);
         try {
             const { data: { session } } = await supabase.auth.getSession();
             const headers: HeadersInit = { "Content-Type": "application/json" };
-            if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+
+            if (session?.access_token) {
+                headers["Authorization"] = `Bearer ${session.access_token}`;
+
+                // Auto save presentation so it appears in My Presentations
+                try {
+                    const presentationData = {
+                        title: saveTitle?.trim() || slides[0]?.question || "Untitled Presentation",
+                        slides: slides.map((s) => ({
+                            type: s.type,
+                            question: s.question,
+                            options: OPTIONS_TYPES.includes(s.type) ? s.options.filter((o) => o.trim()) : undefined,
+                            style: s.style,
+                        })),
+                    };
+                    if (savedPresentationId) {
+                        await fetch(`/api/presentations/${savedPresentationId}`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
+                            body: JSON.stringify(presentationData),
+                        });
+                    } else {
+                        const presRes = await fetch("/api/presentations", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
+                            body: JSON.stringify(presentationData),
+                        });
+                        const presData = await presRes.json();
+                        if (presData.presentation?.id) {
+                            setSavedPresentationId(presData.presentation.id);
+                        }
+                    }
+                } catch (saveErr) {
+                    console.error("Auto save presentation error:", saveErr);
+                }
+            }
 
             const response = await fetch("/api/poll", {
                 method: "POST",
@@ -284,15 +318,8 @@ export default function PresenterDashboard() {
                     slides: slides.map((s) => ({
                         type: s.type,
                         question: s.question,
-                        options: OPTIONS_TYPES.includes(s.type) ? s.options : undefined,
+                        options: OPTIONS_TYPES.includes(s.type) ? s.options.filter((o) => o.trim()) : undefined,
                         style: s.style,
-                        group_id: s.groupId,
-                    })),
-                    groups: groups.map((g, idx) => ({
-                        tempId: g.id,
-                        title: g.title,
-                        type: g.type,
-                        order_index: idx,
                     })),
                     qa_enabled: qaEnabled,
                 }),
@@ -357,90 +384,28 @@ export default function PresenterDashboard() {
                         </button>
                     </div>
 
-                    {/* Standalone slides */}
-                    {standaloneSlides.map((slide) => {
-                        const sIndex = slides.indexOf(slide);
-                        return (
-                            <SlideCard
-                                key={slide.id}
-                                slide={slide}
-                                sIndex={sIndex}
-                                showTypePicker={showTypePicker === sIndex}
-                                onToggleTypePicker={(open) => setShowTypePicker(open ? sIndex : null)}
-                                onChangeType={(type) => changeSlideType(sIndex, type)}
-                                onUpdateSlide={(field, value) => updateSlide(sIndex, field, value)}
-                                onRemove={() => removeSlide(sIndex)}
-                                onUpdateOption={(oIdx, val) => updateOption(sIndex, oIdx, val)}
-                                onAddOption={() => addOption(sIndex)}
-                                onRemoveOption={(oIdx) => removeOption(sIndex, oIdx)}
-                                canRemove={slides.length > 1}
-                            />
-                        );
-                    })}
+                    {/* Slide list */}
+                    {slides.map((slide, sIndex) => (
+                        <SlideCard
+                            key={slide.id}
+                            slide={slide}
+                            sIndex={sIndex}
+                            showTypePicker={showTypePicker === sIndex}
+                            onToggleTypePicker={(open) => setShowTypePicker(open ? sIndex : null)}
+                            onChangeType={(type) => changeSlideType(sIndex, type)}
+                            onUpdateSlide={(field, value) => updateSlide(sIndex, field, value)}
+                            onRemove={() => removeSlide(sIndex)}
+                            onUpdateOption={(oIdx, val) => updateOption(sIndex, oIdx, val)}
+                            onAddOption={() => addOption(sIndex)}
+                            onRemoveOption={(oIdx) => removeOption(sIndex, oIdx)}
+                            canRemove={slides.length > 1}
+                        />
+                    ))}
 
-                    {/* Survey groups */}
-                    {groups.map((group) => {
-                        const groupSlides = slides.filter((s) => s.groupId === group.id);
-                        return (
-                            <div key={group.id} className="survey-group-card">
-                                <div className="survey-group-header">
-                                    <div className="survey-group-title-row">
-                                        <ClipboardList size={18} className="survey-icon" />
-                                        <input
-                                            type="text"
-                                            className="survey-group-title-input"
-                                            value={group.title}
-                                            onChange={(e) => updateGroup(group.id, "title", e.target.value)}
-                                            placeholder="Survey title..."
-                                        />
-                                        <span className="survey-group-badge">Survey · {groupSlides.length} questions</span>
-                                    </div>
-                                    <div className="survey-group-actions">
-                                        <button type="button" onClick={() => updateGroup(group.id, "collapsed", !group.collapsed)}>
-                                            {group.collapsed ? <ChevronRight size={18} /> : <ChevronDown size={18} />}
-                                        </button>
-                                        <button type="button" className="btn-remove-group" onClick={() => removeGroup(group.id)}>
-                                            <X size={16} />
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {!group.collapsed && (
-                                    <div className="survey-group-slides">
-                                        {groupSlides.map((slide) => {
-                                            const sIndex = slides.indexOf(slide);
-                                            return (
-                                                <SurveySlideCard
-                                                    key={slide.id}
-                                                    slide={slide}
-                                                    sIndex={sIndex}
-                                                    groupSlideIndex={groupSlides.indexOf(slide)}
-                                                    onUpdateSlide={(field, value) => updateSlide(sIndex, field, value)}
-                                                    onRemove={() => removeSlide(sIndex)}
-                                                    canRemove={groupSlides.length > 1}
-                                                />
-                                            );
-                                        })}
-                                        <button
-                                            type="button"
-                                            className="btn-add-survey-question"
-                                            onClick={() => addSlide(group.id)}
-                                        >
-                                            <Plus size={15} /> Add question to survey
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-
-                    {/* Add slide / survey group buttons */}
+                    {/* Add slide button */}
                     <div className="builder-add-actions">
                         <button type="button" className="btn-add-slide" onClick={() => addSlide()}>
                             <Plus size={18} /> Add Slide
-                        </button>
-                        <button type="button" className="btn-add-survey-group" onClick={addSurveyGroup}>
-                            <FolderPlus size={18} /> Add Survey Group
                         </button>
                     </div>
 

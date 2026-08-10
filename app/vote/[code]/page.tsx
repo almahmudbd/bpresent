@@ -192,6 +192,15 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
         } else throw new Error(data.error);
     };
 
+    const handleRatingItemsSubmit = async (items: { option_id: string; rating_value: number }[]) => {
+        if (!activeSlide) return;
+        const response = await submitVoteAPI({ slide_id: activeSlide.id, rating_items: items });
+        const data = await response.json();
+        if (data.success || response.status === 409) {
+            setVotedSlides((prev) => new Set(prev).add(activeSlide.id));
+        } else throw new Error(data.error);
+    };
+
     const handleRankingSubmit = async (rankOrder: string[]) => {
         if (!activeSlide) return;
         const response = await submitVoteAPI({ slide_id: activeSlide.id, rank_order: rankOrder });
@@ -308,8 +317,10 @@ export default function VotePage({ params }: { params: Promise<{ code: string }>
                         code={code}
                         question={activeSlide.question}
                         style={activeSlide.style as "stars" | "scale"}
+                        options={optionResults}
                         hasVoted={hasVoted}
                         onSubmit={handleRatingSubmit}
+                        onSubmitItems={handleRatingItemsSubmit}
                     />
                 );
 

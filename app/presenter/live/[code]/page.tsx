@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon, Plus, Clock, MessageCircleQuestion } from "lucide-react";
+import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon, Plus, Clock, MessageCircleQuestion, Pin } from "lucide-react";
 import { formatTimeRemaining } from "@/lib/timeUtils";
 import { type PollWithSlides, type SlideWithOptions } from "@/lib/types";
 import { QRCodeSVG } from "qrcode.react";
@@ -49,6 +49,7 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     const [loading, setLoading] = useState(true);
     const [copied, setCopied] = useState(false);
     const [showQr, setShowQr] = useState(false);
+    const [isQrPinned, setIsQrPinned] = useState(false);
     const [origin, setOrigin] = useState("");
     const [refreshing, setRefreshing] = useState(false);
     const [currentTheme, setCurrentTheme] = useState<ThemeKey>("default");
@@ -57,10 +58,48 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     const [liveSlideId, setLiveSlideId] = useState<string | null>(null); // Track what the audience sees
     const [showThankYou, setShowThankYou] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
-    const [newSlideType, setNewSlideType] = useState<"quiz" | "word-cloud">("quiz");
+    const [newSlideType, setNewSlideType] = useState<SlideType>("quiz");
     const [newQuestion, setNewQuestion] = useState("");
     const [newOptions, setNewOptions] = useState(["", ""]);
-    const [isAddingSlide, setIsAddingSlide] = useState(false);
+    const handleAddSlide = async () => {
+        if (!newQuestion.trim()) return;
+        setIsAddingSlide(true);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const headers: HeadersInit = { "Content-Type": "application/json" };
+            if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+
+            const optionsTypes = ["quiz", "ranking", "rating"];
+            const validOptions = optionsTypes.includes(newSlideType) ? newOptions.filter((o) => o.trim()) : undefined;
+
+            const response = await fetch("/api/poll/slide", {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                    code,
+                    type: newSlideType,
+                    question: newQuestion.trim(),
+                    options: validOptions,
+                    style: newSlideType === "quiz" ? "bar" : newSlideType === "rating" ? "stars" : undefined,
+                }),
+            });
+
+            const data = await response.json();
+            if (response.ok && data.id) {
+                setShowAddModal(false);
+                setNewQuestion("");
+                setNewOptions(["", ""]);
+                await fetchPollData(false);
+            } else {
+                alert("Failed to add slide: " + (data.error || "Unknown error"));
+            }
+        } catch (err) {
+            console.error("Error adding slide:", err);
+            alert("Failed to add slide");
+        } finally {
+            setIsAddingSlide(false);
+        }
+    };
     const [showQAPanel, setShowQAPanel] = useState(false);
     const [qaIsOpen, setQaIsOpen] = useState(false);
 
@@ -465,6 +504,17 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                                 />
                             </div>
                             <button
+                                type="button"
+                                onClick={() => {
+                                    setIsQrPinned(!isQrPinned);
+                                    setShowQr(false);
+                                }}
+                                className="mt-4 flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl transition-all"
+                            >
+                                <Pin className="w-3.5 h-3.5" />
+                                {isQrPinned ? "Unpin from Corner" : "Pin QR Code to Corner"}
+                            </button>
+                            <button
                                 onClick={() => setShowQr(false)}
                                 className="absolute -top-3 -right-3 bg-white text-gray-400 hover:text-red-500 p-2 rounded-full shadow-lg border border-gray-100 transition-colors"
                             >
@@ -474,6 +524,37 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                     )}
                 </div>
             </div>
+
+            {/* Pinned QR Code Widget (Bottom-Left Corner) */}
+            {isQrPinned && (
+                <div className="fixed bottom-6 left-6 z-40 bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-gray-200/80 flex flex-col items-center gap-2 animate-in slide-in-from-bottom-5 duration-300">
+                    <div className="flex items-center justify-between w-full gap-3 border-b border-gray-100 pb-2">
+                        <div className="flex items-center gap-1.5">
+                            <Pin className="w-3 h-3 text-indigo-600 fill-indigo-600" />
+                            <span className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">Scan to Join</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsQrPinned(false)}
+                            className="text-gray-400 hover:text-red-500 p-0.5 rounded transition-colors"
+                            title="Unpin QR Code"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <div className="p-2 bg-white rounded-xl border border-gray-100 shadow-inner">
+                        <QRCodeSVG
+                            value={`${origin || (typeof window !== "undefined" ? window.location.origin : "")}/vote/${code}`}
+                            size={120}
+                            level="M"
+                        />
+                    </div>
+                    <div className="text-center pt-1">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Join Code</span>
+                        <span className={`text-xl font-extrabold tracking-widest ${theme.accent}`}>{code}</span>
+                    </div>
+                </div>
+            )}
 
             {/* Main Content */}
             <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col">
@@ -710,19 +791,24 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                         <div className="p-6 space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">Slide Type</label>
-                                <div className="flex gap-4">
-                                    <button
-                                        onClick={() => setNewSlideType("quiz")}
-                                        className={`flex-1 py-3 px-4 rounded-xl border-2 font-medium transition-all ${newSlideType === "quiz" ? "border-indigo-600 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
-                                    >
-                                        Multiple Choice
-                                    </button>
-                                    <button
-                                        onClick={() => setNewSlideType("word-cloud")}
-                                        className={`flex-1 py-3 px-4 rounded-xl border-2 font-medium transition-all ${newSlideType === "word-cloud" ? "border-indigo-600 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
-                                    >
-                                        Word Cloud
-                                    </button>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { type: "quiz", label: "Multiple Choice" },
+                                        { type: "word-cloud", label: "Word Cloud" },
+                                        { type: "open-text", label: "Open Text" },
+                                        { type: "ideas", label: "Ideas" },
+                                        { type: "ranking", label: "Ranking" },
+                                        { type: "rating", label: "Rating" },
+                                    ].map((item) => (
+                                        <button
+                                            key={item.type}
+                                            type="button"
+                                            onClick={() => setNewSlideType(item.type as SlideType)}
+                                            className={`py-2.5 px-3 rounded-xl border-2 font-medium text-xs text-center transition-all ${newSlideType === item.type ? "border-indigo-600 bg-indigo-50 text-indigo-700 font-bold" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
+                                        >
+                                            {item.label}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
@@ -733,13 +819,15 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                                     value={newQuestion}
                                     onChange={(e) => setNewQuestion(e.target.value)}
                                     placeholder="What would you like to ask?"
-                                    className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                    className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                                 />
                             </div>
 
-                            {newSlideType === "quiz" && (
+                            {["quiz", "ranking", "rating"].includes(newSlideType) && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Options</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        {newSlideType === "rating" ? "Items to rate (optional)" : newSlideType === "ranking" ? "Items to rank" : "Options"}
+                                    </label>
                                     <div className="space-y-2">
                                         {newOptions.map((opt, idx) => (
                                             <div key={idx} className="flex gap-2">
@@ -751,11 +839,12 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                                                         opts[idx] = e.target.value;
                                                         setNewOptions(opts);
                                                     }}
-                                                    placeholder={`Option ${idx + 1}`}
-                                                    className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                    placeholder={newSlideType === "rating" ? `Item ${idx + 1}` : `Option ${idx + 1}`}
+                                                    className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                                                 />
-                                                {newOptions.length > 2 && (
+                                                {newOptions.length > 1 && (
                                                     <button
+                                                        type="button"
                                                         onClick={() => setNewOptions(newOptions.filter((_, i) => i !== idx))}
                                                         className="text-red-500 hover:bg-red-50 p-2 rounded-lg"
                                                     >
@@ -765,10 +854,11 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
                                             </div>
                                         ))}
                                         <button
+                                            type="button"
                                             onClick={() => setNewOptions([...newOptions, ""])}
-                                            className="text-indigo-600 text-sm font-medium hover:underline flex items-center gap-1"
+                                            className="text-indigo-600 text-xs font-bold hover:underline flex items-center gap-1 mt-1"
                                         >
-                                            <Plus className="w-3 h-3" /> Add Option
+                                            <Plus className="w-3 h-3" /> Add {newSlideType === "rating" ? "Item" : "Option"}
                                         </button>
                                     </div>
                                 </div>

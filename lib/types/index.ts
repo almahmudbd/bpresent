@@ -160,7 +160,8 @@ export interface VoteInput {
     text?: string;        // word-cloud, open-text
     session_id: string;
     rank_order?: string[]; // ranking: ordered array of option IDs
-    rating_value?: number; // rating: numeric value
+    rating_value?: number; // rating: numeric value for single item
+    rating_items?: { option_id: string; rating_value: number }[]; // rating: array of scores per item
 }
 
 // Q&A inputs
@@ -207,6 +208,8 @@ export interface OptionResult {
     upvote_count?: number;
     // For ranking: average rank position
     avg_rank?: number;
+    // For rating items: average rating score
+    avg_rating?: number;
 }
 
 export interface TextResponse {

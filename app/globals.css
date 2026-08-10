@@ -429,3 +429,19 @@ main :is(.to-purple-50) { --tw-gradient-to: #f6f2e9; }
 .survey-group-badge { background: #d7e4e8; color: #173d59; }
 .survey-slide-card { border-color: #d7d0c2; }
 .btn-add-survey-group { border-color: #b9c9d1; background: #e7eff1; color: #173d59; }
+
+/* Audience feedback controls: selections, votes and live-response states. */
+.idea-upvote-btn:hover:not(:disabled), .idea-upvote-btn.upvoted,
+.ranking-item.dragging, .scale-btn:hover, .scale-btn.selected,
+.qa-sort-btns button.active, .qa-upvote-btn:hover, .qa-upvote-btn.qa-upvoted {
+  border-color: #9a7625;
+  color: #173d59;
+}
+.idea-upvote-btn.upvoted, .ranking-item.dragging, .qa-upvote-btn.qa-upvoted { background: #f1ead8; }
+.scale-btn.selected, .qa-sort-btns button.active { background: #173d59; color: white; }
+.ranking-item:hover { border-color: #b9c9d1; }
+.rank-bar-fill { background: #173d59; }
+.qa-floating-open:hover { background: #102e45; }
+.pqa-tabs button.active { color: #173d59; border-bottom-color: #9a7625; }
+.pqa-sort-btns button.active, .pqa-btn-reply { background: #f1ead8; color: #173d59; border-color: #ddc98e; }
+.pqa-upvotes, .qa-toggle-on { color: #173d59; }

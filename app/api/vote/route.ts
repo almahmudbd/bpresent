@@ -47,7 +47,11 @@ const ideaUpvoteSchema = z.object({
 const ratingVoteSchema = z.object({
     code: z.string().length(4),
     slide_id: z.string().uuid(),
-    rating_value: z.number().min(1).max(10),
+    rating_value: z.number().min(1).max(10).optional(),
+    rating_items: z.array(z.object({
+        option_id: z.string().uuid(),
+        rating_value: z.number().min(1).max(10),
+    })).optional(),
 });
 
 const rankingVoteSchema = z.object({
