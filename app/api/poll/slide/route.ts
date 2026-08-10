@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { code, type, question, options, style } = validation.data;
+        const { code, type, question, options, style, group_id } = validation.data;
 
         // Check ownership if user is logged in
         let userId: string | undefined;
