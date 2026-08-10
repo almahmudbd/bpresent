@@ -4,7 +4,7 @@ import { useEffect, useState, use, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Copy, Check, ChevronRight, ChevronLeft, Users, QrCode, X, RefreshCw, Palette, Link as LinkIcon, Plus, Clock, MessageCircleQuestion, Pin } from "lucide-react";
 import { formatTimeRemaining } from "@/lib/timeUtils";
-import { type PollWithSlides, type SlideWithOptions } from "@/lib/types";
+import { type PollWithSlides, type SlideWithOptions, type SlideType } from "@/lib/types";
 import { QRCodeSVG } from "qrcode.react";
 import { BarChart } from "@/components/charts/BarChart";
 import { PieChart } from "@/components/charts/PieChart";
