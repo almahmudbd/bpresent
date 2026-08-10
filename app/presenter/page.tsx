@@ -24,14 +24,6 @@ interface SlideState {
     type: SlideType;
     options: string[];
     style?: SlideStyle;
-    groupId?: string; // references SlideGroupState.id
-}
-
-interface SlideGroupState {
-    id: string;    // client-side temp id
-    title: string;
-    type: "survey";
-    collapsed: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,7 +65,6 @@ export default function PresenterDashboard() {
     const [slides, setSlides] = useState<SlideState[]>([
         { id: crypto.randomUUID(), question: "", type: "quiz", options: ["", ""], style: "donut" },
     ]);
-    const [groups, setGroups] = useState<SlideGroupState[]>([]);
     const [qaEnabled, setQaEnabled] = useState(false);
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<User | null>(null);
@@ -193,39 +184,6 @@ export default function PresenterDashboard() {
         }
     };
 
-    // ── Survey group mutations ──
-
-    const addSurveyGroup = () => {
-        const newGroupId = crypto.randomUUID();
-        const newGroup: SlideGroupState = {
-            id: newGroupId,
-            title: "New Survey",
-            type: "survey",
-            collapsed: false,
-        };
-        setGroups((prev) => [...prev, newGroup]);
-        setSlides((prev) => [
-            ...prev,
-            {
-                id: crypto.randomUUID(),
-                question: "",
-                type: "survey",
-                options: [],
-                style: "list",
-                groupId: newGroupId,
-            },
-        ]);
-    };
-
-    const updateGroup = (id: string, field: keyof SlideGroupState, value: any) => {
-        setGroups(groups.map((g) => g.id === id ? { ...g, [field]: value } : g));
-    };
-
-    const removeGroup = (id: string) => {
-        setGroups(groups.filter((g) => g.id !== id));
-        setSlides(slides.filter((s) => s.groupId !== id));
-    };
-
     // ── Save presentation ──
 
     const handleSavePresentation = async () => {
@@ -239,7 +197,7 @@ export default function PresenterDashboard() {
                 slides: slides.map((s) => ({
                     type: s.type, question: s.question,
                     options: OPTIONS_TYPES.includes(s.type) ? s.options : undefined,
-                    style: s.style, groupId: s.groupId,
+                    style: s.style,
                 })),
             };
             if (savedPresentationId) {
