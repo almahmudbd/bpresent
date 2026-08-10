@@ -61,6 +61,7 @@ export default function PresenterLivePage({ params }: { params: Promise<{ code: 
     const [newSlideType, setNewSlideType] = useState<SlideType>("quiz");
     const [newQuestion, setNewQuestion] = useState("");
     const [newOptions, setNewOptions] = useState(["", ""]);
+    const [isAddingSlide, setIsAddingSlide] = useState(false);
     const handleAddSlide = async () => {
         if (!newQuestion.trim()) return;
         setIsAddingSlide(true);
