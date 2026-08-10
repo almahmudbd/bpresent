@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { GripVertical, ArrowUpDown, BarChart2 } from "lucide-react";
+import { GripVertical, ArrowUpDown, BarChart2, ChevronUp, ChevronDown } from "lucide-react";
 import { type OptionResult } from "@/lib/types";
 
 interface RankingSlideProps {
@@ -32,6 +32,14 @@ export function RankingSlide({
         setOrder([...options]);
     }
 
+    const moveItem = (fromIndex: number, toIndex: number) => {
+        const currentOrder = [...(order.length > 0 ? order : options)];
+        if (toIndex < 0 || toIndex >= currentOrder.length) return;
+        const [moved] = currentOrder.splice(fromIndex, 1);
+        currentOrder.splice(toIndex, 0, moved);
+        setOrder(currentOrder);
+    };
+
     const handleDragStart = (index: number) => setDragIndex(index);
 
     const handleDragOver = (e: React.DragEvent, index: number) => {
@@ -53,6 +61,8 @@ export function RankingSlide({
         setSubmitting(true);
         try {
             await onSubmit(currentOrder.map((o) => o.id));
+        } catch (err: any) {
+            alert(err.message || "Failed to submit ranking");
         } finally {
             setSubmitting(false);
         }
@@ -90,7 +100,9 @@ export function RankingSlide({
         );
     }
 
-    // Audience view: drag-and-drop
+    // Audience view: drag-and-drop & touch buttons
+    const currentList = order.length > 0 ? order : options;
+
     return (
         <div className="ranking-slide">
             <div className="slide-question">
@@ -125,27 +137,51 @@ export function RankingSlide({
                 </div>
             ) : (
                 <>
-                    <p className="ranking-hint">Drag to reorder from most to least preferred</p>
+                    <p className="ranking-hint">Drag or use arrows to order from top (#1) to bottom</p>
                     <div className="ranking-list">
-                        {order.map((opt, index) => (
+                        {currentList.map((opt, index) => (
                             <div
                                 key={opt.id}
-                                className={`ranking-item ${dragIndex === index ? "dragging" : ""}`}
+                                className={`ranking-item flex items-center justify-between p-3 bg-white rounded-xl border border-gray-200 shadow-sm mb-2 ${dragIndex === index ? "opacity-50" : ""}`}
                                 draggable
                                 onDragStart={() => handleDragStart(index)}
                                 onDragOver={(e) => handleDragOver(e, index)}
                                 onDragEnd={handleDragEnd}
                             >
-                                <span className="rank-number">{index + 1}</span>
-                                <GripVertical size={18} className="drag-handle" />
-                                <span className="rank-text">{opt.text}</span>
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <span className="rank-number font-black text-indigo-600 w-6">#{index + 1}</span>
+                                    <GripVertical size={18} className="drag-handle text-gray-400 cursor-grab" />
+                                    <span className="rank-text font-semibold text-gray-800 truncate">{opt.text}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => moveItem(index, index - 1)}
+                                        disabled={index === 0}
+                                        className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded-lg hover:bg-indigo-50 transition-colors"
+                                        title="Move Up"
+                                    >
+                                        <ChevronUp size={18} />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => moveItem(index, index + 1)}
+                                        disabled={index === currentList.length - 1}
+                                        className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded-lg hover:bg-indigo-50 transition-colors"
+                                        title="Move Down"
+                                    >
+                                        <ChevronDown size={18} />
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>
+
                     <button
-                        className="btn-submit-ranking"
+                        type="button"
                         onClick={handleSubmit}
-                        disabled={submitting}
+                        disabled={submitting || currentList.length === 0}
+                        className="btn-submit-ranking w-full py-4 mt-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold text-lg shadow-lg active:scale-95 transition-all"
                     >
                         {submitting ? "Submitting..." : "Submit Ranking"}
                     </button>

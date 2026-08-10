@@ -39,6 +39,8 @@ export function IdeasSlide({
         try {
             await onSubmitIdea(text.trim());
             setText("");
+        } catch (err: any) {
+            alert(err.message || "Failed to submit idea");
         } finally {
             setSubmitting(false);
         }

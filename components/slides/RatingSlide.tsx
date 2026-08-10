@@ -43,8 +43,8 @@ export function RatingSlide({
     const [itemRatings, setItemRatings] = useState<Record<string, number>>({});
     const [submitting, setSubmitting] = useState(false);
 
-    const maxRating = style === "stars" ? 5 : 10;
-    const hasMultipleItems = options && options.length > 0;
+    const validOptions = options ? options.filter((o) => o.text && o.text.trim().length > 0) : [];
+    const hasMultipleItems = validOptions.length > 0;
 
     const handleSingleSubmit = async (value: number) => {
         if (!onSubmit || submitting) return;
@@ -52,6 +52,8 @@ export function RatingSlide({
         setSubmitting(true);
         try {
             await onSubmit(value);
+        } catch (err: any) {
+            alert(err.message || "Failed to submit rating");
         } finally {
             setSubmitting(false);
         }
@@ -59,13 +61,15 @@ export function RatingSlide({
 
     const handleMultipleSubmit = async () => {
         if (!onSubmitItems || submitting) return;
-        const itemsToSubmit = options.map((opt) => ({
+        const itemsToSubmit = validOptions.map((opt) => ({
             option_id: opt.id,
             rating_value: itemRatings[opt.id] || 5,
         }));
         setSubmitting(true);
         try {
             await onSubmitItems(itemsToSubmit);
+        } catch (err: any) {
+            alert(err.message || "Failed to submit rating");
         } finally {
             setSubmitting(false);
         }
@@ -154,7 +158,7 @@ export function RatingSlide({
                 </div>
             ) : hasMultipleItems ? (
                 <div className="space-y-6">
-                    {options.map((opt) => {
+                    {validOptions.map((opt) => {
                         const currentVal = itemRatings[opt.id] || 0;
                         return (
                             <div key={opt.id} className="p-4 bg-white border border-slate-100 rounded-2xl shadow-sm space-y-3">
@@ -200,7 +204,7 @@ export function RatingSlide({
                     <button
                         type="button"
                         onClick={handleMultipleSubmit}
-                        disabled={submitting || Object.keys(itemRatings).length < options.length}
+                        disabled={submitting || Object.keys(itemRatings).length < validOptions.length}
                         className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 text-white rounded-2xl font-bold text-lg shadow-lg shadow-indigo-200 transition-all active:scale-95"
                     >
                         {submitting ? "Submitting..." : "Submit All Ratings"}
